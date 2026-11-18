@@ -1,0 +1,1431 @@
+<meta charset="utf-8">
+<title>Floating Restaurant 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=Fredoka:wght@400;600&family=Lilita+One&display=swap">
+<style>
+  /* Layout: one full-screen 3D view, a small HUD card top-left, controls bottom-right. Single sea look by choice. */
+  :root {
+    --sea: #0b1b2e; --ink: #f4ecd8; --lantern: #ffe9a8; --plum: #2b2140; --card: rgba(29, 24, 52, 0.82); --accent: #ff8a3c;
+    --display: "Lilita One", "Fredoka", "Trebuchet MS", sans-serif; --body: "Fredoka", "Trebuchet MS", Verdana, sans-serif;
+    color-scheme: dark; height: 100%;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--sea); color: var(--ink); font-family: var(--body); overflow: hidden; }
+  #view { position: fixed; inset: 0; }
+  canvas { display: block; touch-action: none; }
+  .hud {
+    position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px));
+    background: var(--card); border: 2px solid var(--plum); border-radius: 14px; padding: 10px 14px; max-width: min(320px, calc(100vw - 32px));
+    display: grid; gap: 4px; backdrop-filter: blur(4px);
+  }
+  .hud h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--lantern); letter-spacing: 0.5px; text-wrap: balance; }
+  .hud p { margin: 0; font-size: 13px; line-height: 1.4; }
+  .room { font-weight: 600; color: var(--accent); }
+  .tag { font-size: 11px; opacity: 0.75; }
+  .bar {
+    position: fixed; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end;
+  }
+  button {
+    font: 600 15px var(--body); color: var(--ink); background: var(--plum); border: 2px solid var(--lantern); border-radius: 12px;
+    padding: 8px 14px; cursor: pointer; min-height: 44px;
+  }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .zoom { display: flex; align-items: center; background: var(--card); border: 2px solid var(--lantern); border-radius: 14px; overflow: hidden; }
+  .zoom button { border: 0; border-radius: 0; background: transparent; font: 400 26px var(--display); width: 48px; padding: 0; }
+  .zoom button:hover { background: rgba(255, 233, 168, 0.12); }
+  .zoom span { font-size: 12px; font-weight: 600; min-width: 64px; text-align: center; color: var(--lantern); }
+  .goal { color: #9cffb0; font-size: 12px; }
+  #fhDay { white-space: pre-line; }
+  [hidden] { display: none !important; }
+  #minimap {
+    position: fixed; top: calc(72px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+    width: 150px; height: 150px; border-radius: 50%; border: 3px solid var(--lantern); box-shadow: 0 0 0 3px var(--plum); background: #1b5f95;
+  }
+  @media (max-width: 640px) { #minimap { width: 110px; height: 110px; } }
+  .corner { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); background: #2f7a45; }
+  #gearBar {
+    position: fixed; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); left: max(16px, env(safe-area-inset-left, 0px));
+    display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100vw - 330px);
+  }
+  #gearBar button { font-size: 13px; padding: 6px 10px; min-height: 40px; }
+  #gearBar button.on { background: var(--accent); color: var(--plum); }
+  #gearBar button.bait { border-color: #c9a0ff; }
+  #prompt {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    background: var(--card); border: 2px solid var(--lantern); border-radius: 12px; padding: 8px 14px; text-align: center;
+    font-size: 14px; white-space: pre-line; max-width: min(520px, calc(100vw - 32px));
+  }
+  #toast {
+    position: fixed; left: 50%; transform: translateX(-50%); top: calc(14px + env(safe-area-inset-top, 0px));
+    background: rgba(43, 33, 64, 0.94); border: 2px solid var(--plum); border-radius: 12px; padding: 8px 16px; text-align: center;
+    font-size: 15px; font-weight: 600; white-space: pre-line; max-width: min(560px, calc(100vw - 32px)); z-index: 30;
+  }
+  .panel {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 20;
+    width: min(620px, calc(100vw - 32px)); max-height: calc(100% - 32px); overflow: auto;
+    background: #1d3557; border: 3px solid #ffd98a; border-radius: 20px; padding: 14px 18px; display: grid; gap: 8px;
+    box-shadow: 0 0 0 6px var(--plum);
+  }
+  .panel h2 { margin: 0; font: 400 26px var(--display); color: var(--lantern); text-align: center; }
+  .small { margin: 0; font-size: 13px; text-align: center; }
+  .fstage { position: relative; }
+  #fCanvas { width: 100%; height: auto; border-radius: 12px; display: block; }
+  #fFlash { position: absolute; top: 8px; left: 0; right: 0; text-align: center; font: 400 26px var(--display); color: #fff27a; text-shadow: 0 2px 0 var(--plum); pointer-events: none; }
+  #fInk { position: absolute; inset: 0; pointer-events: none; }
+  #fInk i { position: absolute; border-radius: 50%; background: #1a1026; opacity: 0.95; }
+  #fArrows { position: absolute; inset: 0; display: grid; place-items: center; }
+  #fBig { font: 400 64px var(--display); color: #ffd23c; text-shadow: 0 3px 0 var(--plum); }
+  .ar { position: absolute; width: 48px; height: 48px; padding: 0; font-size: 20px; opacity: 0.85; }
+  .ar.up { top: 6px; left: calc(50% - 24px); } .ar.down { bottom: 6px; left: calc(50% - 24px); }
+  .ar.left { left: calc(50% - 120px); top: calc(50% - 24px); } .ar.right { right: calc(50% - 120px); top: calc(50% - 24px); }
+  #fStatus { margin: 0; text-align: center; font: 400 22px var(--display); }
+  .meter { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: var(--lantern); }
+  .tension { position: relative; height: 20px; display: flex; border: 2px solid var(--plum); border-radius: 6px; overflow: visible; }
+  .tension .z1 { flex: 60; background: #3f8f4f; } .tension .z2 { flex: 25; background: #d9a020; } .tension .z3 { flex: 15; background: #b3262b; }
+  #fNeedle { position: absolute; top: -7px; width: 8px; height: 32px; background: #fff; border: 2px solid var(--plum); border-radius: 3px; left: 0; transform: translateX(-50%); }
+  .stam { height: 12px; border: 2px solid var(--plum); border-radius: 6px; background: #1a1430; overflow: hidden; }
+  #fStam { display: block; height: 100%; width: 100%; background: #5bd1ff; }
+  #fSide { display: grid; grid-template-columns: 90px 1fr 90px; gap: 8px; }
+  #fSide[hidden] { display: grid !important; } #fSide[hidden] button[data-side] { visibility: hidden; }
+  #fSide button[data-side] { user-select: none; -webkit-user-select: none; touch-action: none; font-size: 14px; }
+  #fSide button.on { background: #3f8f4f; }
+  #reel { background: var(--accent); color: var(--plum); font-size: 17px; min-height: 52px; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #sList { display: grid; gap: 6px; }
+  .catch { display: flex; justify-content: space-between; gap: 10px; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 6px 10px; font-size: 14px; }
+  .catch b { color: var(--lantern); }
+  #sGo { background: #2f7a45; }
+  #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .lbl { position: absolute; transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; }
+  .lbl .pat { width: 46px; height: 7px; border-radius: 4px; background: rgba(0,0,0,0.45); overflow: hidden; border: 1px solid var(--plum); }
+  .lbl .pat b { display: block; height: 100%; }
+  .lbl .bub { display: flex; gap: 2px; background: #fffaf0; border: 2px solid var(--plum); border-radius: 10px; padding: 2px 4px; color: var(--plum); align-items: center; }
+  .lbl .bub img { width: 30px; height: 30px; }
+  .lbl .say { background: #fffbe8; color: #2b2140; border: 2px solid #2b2140; border-radius: 12px; padding: 3px 8px; font-style: italic; max-width: 200px; text-align: center; white-space: normal; font-weight: 400; animation: pop 0.2s ease-out; }
+  .lbl .mark { font: 400 26px var(--display); color: #ff6b5b; text-shadow: 0 2px 0 #2b2140; line-height: 1; }
+  .lbl .hearts { color: #ff6f91; letter-spacing: 1px; }
+  .lbl .big { font: 400 24px var(--display); text-shadow: 0 2px 0 #2b2140; white-space: nowrap; }
+  @keyframes pop { from { transform: scale(0.5); opacity: 0; } to { transform: none; opacity: 1; } }
+  #choice { z-index: 26; width: min(520px, calc(100vw - 32px)); }
+  #choice .tbtns button { font-size: 16px; min-height: 46px; text-align: left; }
+  .lbl .tag2 { background: rgba(43,33,64,0.85); color: var(--lantern); border-radius: 8px; padding: 1px 6px; white-space: nowrap; }
+  .lbl .slot { width: 40px; height: 8px; border-radius: 4px; background: rgba(0,0,0,0.5); overflow: hidden; border: 1px solid var(--plum); }
+  .lbl .slot b { display: block; height: 100%; }
+  #rail {
+    position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+    width: min(230px, 40vw); max-height: 60vh; overflow: auto; display: grid; gap: 4px;
+  }
+  .tk { display: flex; gap: 6px; align-items: center; background: #fffaf0; color: var(--plum); border: 2px solid var(--plum); border-radius: 10px; padding: 3px 8px; font-size: 12px; font-weight: 600; }
+  .tk img { width: 28px; height: 28px; }
+  .tk.cook { background: #ffe9a8; } .tk.ready { background: #9cffb0; } .tk.pass { background: #bfe3ff; }
+  #carry { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); background: var(--card); border: 2px solid var(--lantern); border-radius: 12px; padding: 6px 12px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
+  #carry img { width: 30px; height: 30px; }
+  #actBtn { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: var(--plum); font: 400 24px var(--display); }
+  #caption { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(60px + env(safe-area-inset-bottom, 0px)); background: rgba(43,33,64,0.9); border: 2px solid var(--lantern); border-radius: 14px; padding: 10px 20px; font: 400 24px var(--display); color: var(--lantern); text-align: center; max-width: min(600px, calc(100vw - 32px)); z-index: 25; }
+  #fader { position: fixed; inset: 0; background: #05060f; opacity: 0; pointer-events: none; transition: opacity 0.8s; z-index: 40; }
+  #skipBtn { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 41; }
+  .panel.wide { width: min(860px, calc(100vw - 24px)); height: min(600px, calc(100% - 24px)); grid-template-rows: auto 1fr auto; }
+  .ptabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ptabs button { font-size: 13px; padding: 6px 10px; min-height: 36px; }
+  .ptabs button.on { background: var(--accent); color: var(--plum); }
+  #pbody { overflow: auto; display: grid; gap: 6px; align-content: start; min-height: 0; }
+  #pbody h3 { margin: 6px 0 0; font: 400 20px var(--display); color: var(--lantern); }
+  .row { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 6px 10px; font-size: 13px; flex-wrap: wrap; }
+  .row img { width: 44px; height: 44px; object-fit: contain; }
+  .row .grow { flex: 1; min-width: 140px; }
+  .row .sub { font-size: 11px; opacity: 0.8; display: block; }
+  .row .price { color: var(--lantern); font-weight: 600; min-width: 48px; }
+  .row button { font-size: 12px; padding: 5px 10px; min-height: 34px; }
+  .row.on { background: rgba(92, 255, 138, 0.15); }
+  .row.bad { background: rgba(255, 107, 91, 0.18); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; }
+  .pfoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+  #openBtn, #rGo { background: #2f7a45; }
+  #store { width: min(700px, calc(100vw - 24px)); top: 44%; }
+  #store.tank { background: #1b4a6b; } #store.pantry { background: #4a3524; }
+  #stGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .sitem { position: relative; display: grid; justify-items: center; gap: 2px; padding: 8px 4px 6px; background: rgba(255,255,255,0.1); border: 2px solid var(--plum); border-radius: 12px; font-size: 12px; min-height: 104px; }
+  .sitem img { width: 72px; height: 44px; object-fit: contain; }
+  .sitem:disabled { opacity: 0.35; }
+  .sitem .key { position: absolute; top: 4px; left: 6px; background: var(--lantern); color: var(--plum); border-radius: 4px; padding: 0 5px; font-weight: 700; }
+  .sitem .cnt { position: absolute; top: 2px; right: 8px; font: 400 18px var(--display); color: #ffe14d; }
+  #stHands { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; font-weight: 600; color: var(--lantern); }
+  #stHands button { font-size: 12px; min-height: 34px; padding: 4px 10px; background: #7a4e9c; }
+  .pill { background: rgba(255,255,255,0.12); border-radius: 8px; padding: 3px 8px; color: var(--ink); font-weight: 400; }
+  #stOrders { text-align: left; }
+  #stClose { justify-self: end; }
+  .hbar { margin: 6px auto 0; width: 160px; height: 10px; border-radius: 6px; background: rgba(0,0,0,0.5); border: 1px solid var(--lantern); overflow: hidden; }
+  .hbar b { display: block; height: 100%; background: #9cffb0; }
+  #carry img { width: 30px; height: 22px; object-fit: contain; }
+  #title { width: min(460px, calc(100vw - 32px)); text-align: center; top: 46%; }
+  #title .big { font-size: 46px; line-height: 1.05; }
+  .tbtns { display: grid; gap: 10px; margin-top: 6px; }
+  .tbtns button { font-size: 19px; min-height: 54px; }
+  #tContinue { background: #2f7a45; }
+  .wcard { display: flex; gap: 12px; align-items: center; background: rgba(255,255,255,0.07); border-radius: 12px; padding: 10px; text-align: left; width: 100%; border: 2px solid transparent; }
+  .wcard:hover:not(:disabled) { border-color: var(--lantern); }
+  .wcard .sw { width: 54px; height: 54px; border-radius: 12px; flex: none; }
+  .wcard small { display: block; font-weight: 400; opacity: 0.85; }
+  .rgrid { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; font-size: 14px; }
+  .rgrid .neg { color: #ff9c9c; } .rgrid .pos { color: #9cffb0; } .rgrid .tot { font-weight: 700; color: var(--lantern); border-top: 1px solid var(--lantern); padding-top: 4px; }
+  @media (max-width: 640px) { #rail { width: 44vw; top: auto; bottom: 90px; max-height: 30vh; } }
+  #fHeat { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd23c, #ff5b2b); }
+  #reel.iced { background: #bff0ff; color: #2f6f8f; box-shadow: inset 0 0 0 4px #ffffff; }
+  .cfish { display: flex; align-items: center; gap: 8px; }
+  .cfish img { width: 56px; height: 32px; }
+  #fTip { color: #ffe9a8; font-weight: 600; }
+  /* v4.1: the sea chart */
+  #waters.map { height: auto; grid-template-rows: auto auto auto; width: min(980px, calc(100vw - 24px)); }
+  .mapwrap { display: grid; grid-template-columns: 1fr 250px; gap: 10px; align-items: start; }
+  #seaMap { width: 100%; height: auto; border-radius: 14px; border: 3px solid #8a5a34; cursor: pointer; display: block; }
+  #mapCard { display: grid; gap: 8px; background: #f3e4bf; color: #3a2a1a; border-radius: 12px; padding: 12px; border: 3px solid #8a5a34; font-size: 13px; }
+  #mapCard h3 { margin: 0; font: 400 24px var(--display); color: #5a3a22; }
+  #mapCard .fishes { display: flex; flex-wrap: wrap; gap: 2px; }
+  #mapCard .fishes img { width: 46px; height: 26px; }
+  #mapCard .lock { color: #a3302a; font-weight: 600; }
+  #mapCard button { background: #2f7a45; }
+  #mapCard button:disabled { opacity: 0.4; }
+  @media (max-width: 700px) { .mapwrap { grid-template-columns: 1fr; } }
+  /* v4.1: the captain's journal (results) */
+  #journalBook { position: fixed; inset: 0; z-index: 22; display: grid; place-items: center; align-content: center; gap: 10px; background: radial-gradient(ellipse at center, rgba(10,8,20,0.35), rgba(10,8,20,0.75)); }
+  .jbook { position: relative; display: grid; grid-template-columns: 1fr 1fr; width: min(940px, calc(100vw - 24px)); height: min(560px, calc(100vh - 110px)); transform-origin: 50% 100%; animation: bookIn 0.7s cubic-bezier(.2,1.4,.4,1); }
+  @keyframes bookIn { from { transform: scale(0.3) rotateX(60deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  .jpage { background: linear-gradient(90deg, #efe0bb, #f8eccf 12%, #f8eccf 88%, #e9d6aa); color: #3a2a1a; padding: 18px 26px; overflow: auto; font: 20px "Caveat", "Comic Sans MS", cursive; line-height: 1.25; border: 3px solid #6a3f22; box-shadow: inset 0 0 30px rgba(120,80,30,0.25); }
+  .jpage.left { border-radius: 16px 4px 4px 16px; border-right-width: 1px; background: linear-gradient(90deg, #e9d6aa, #f8eccf 12%, #f8eccf 88%, #e3cc98); }
+  .jpage.right { border-radius: 4px 16px 16px 4px; border-left-width: 1px; }
+  .jpage h4 { margin: 0 0 4px; font: 400 30px "Caveat", cursive; color: #7a2a1a; }
+  .jpage .ln { opacity: 0; min-height: 1.2em; }
+  .jpage .ln.on { opacity: 1; }
+  .jpage .fishrow { display: flex; align-items: center; gap: 6px; }
+  .jpage .fishrow img { width: 70px; height: 40px; filter: sepia(0.6) contrast(1.1); }
+  .jpage .stamp { display: inline-block; transform: rotate(-12deg) scale(2); opacity: 0; color: #c0302a; border: 3px solid #c0302a; border-radius: 6px; padding: 0 6px; font: 400 18px var(--display); margin-left: 6px; transition: transform 0.25s cubic-bezier(.2,1.6,.4,1), opacity 0.2s; }
+  .jpage .stamp.on { transform: rotate(-12deg) scale(1); opacity: 1; }
+  .jpage .money.pos { color: #2f6f3a; } .jpage .money.neg { color: #a3302a; }
+  .jpage .total { border-top: 2px solid #3a2a1a; margin-top: 4px; font-size: 26px; }
+  #quill { position: absolute; font-size: 42px; pointer-events: none; transition: left 0.15s, top 0.15s; transform: rotate(-20deg); left: 50%; top: 50%; filter: drop-shadow(2px 3px 0 rgba(0,0,0,0.3)); }
+  .jfoot { display: flex; gap: 10px; }
+  #rGo2 { background: #2f7a45; }
+  @media (max-width: 700px) { .jbook { grid-template-columns: 1fr; overflow: auto; } .jpage { border-radius: 12px !important; } }
+  @media (max-width: 640px) { #gearBar { max-width: calc(100vw - 32px); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); } #prompt { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); } }
+</style>
+<div id="view"></div>
+<div class="hud" id="walkHud" hidden>
+  <h1>Floating Restaurant 3D</h1>
+  <p>You are in the <span class="room" id="room">Dining room</span>.</p>
+  <p class="tag">WASD or arrows to walk · click or tap the deck to walk there · N for day/night · Z / X or the mouse wheel to zoom</p>
+</div>
+<div class="bar">
+  <div class="zoom" role="group" aria-label="Camera zoom">
+    <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
+    <span id="zoomLbl">Zoom 1x</span>
+    <button id="zoomIn" type="button" aria-label="Zoom in">+</button>
+  </div>
+  <button id="nextDay" type="button" hidden>Start next morning ▶</button>
+  <button id="night" type="button">Night</button>
+</div>
+
+<!-- morning fishing UI -->
+<div class="hud" id="fishHud" hidden>
+  <h1 id="fhTitle">Morning</h1>
+  <p id="fhDay"></p>
+  <p id="fhGoal" class="goal"></p>
+  <p class="tag">WASD or arrows to steer · click the sea to sail there · SPACE to cast · R right bait · Q bait · 1-4 gear · T trap</p>
+</div>
+<button id="finishBtn" class="corner" type="button" hidden>Finish morning ▶</button>
+<canvas id="minimap" width="300" height="300" hidden aria-label="Map of nearby fishing spots"></canvas>
+<div id="gearBar" hidden></div>
+<div id="prompt" hidden></div>
+<div id="toast" hidden></div>
+<div id="fight" class="panel" hidden>
+  <h2 id="fName"></h2>
+  <p id="fTip" class="small"></p>
+  <div class="fstage">
+    <canvas id="fCanvas" width="560" height="190"></canvas>
+    <div id="fFlash"></div>
+    <div id="fInk"></div>
+    <div id="fArrows" hidden>
+      <div id="fBig">▲</div>
+      <button type="button" data-dir="up" class="ar up">▲</button><button type="button" data-dir="left" class="ar left">◀</button><button type="button" data-dir="right" class="ar right">▶</button><button type="button" data-dir="down" class="ar down">▼</button>
+    </div>
+  </div>
+  <p id="fStatus"></p>
+  <div id="fMeters">
+    <div class="meter"><span>LINE TENSION</span><div class="tension"><i class="z1"></i><i class="z2"></i><i class="z3"></i><b id="fNeedle"></b></div></div>
+    <div class="meter"><span>FISH STAMINA</span><div class="stam"><b id="fStam"></b></div></div>
+    <div class="meter" id="fHeatRow" hidden><span>LINE HEAT</span><div class="stam heat"><b id="fHeat"></b></div></div>
+  </div>
+  <div id="fSide"><button type="button" data-side="left">◀ Pull</button><button id="reel" type="button">Hold to REEL  (or hold SPACE)</button><button type="button" data-side="right">Pull ▶</button></div>
+</div>
+<div id="labels"></div>
+<div id="choice" class="panel" hidden><h2 id="chTitle"></h2><p id="chBody" class="small"></p><div id="chOpts" class="tbtns"></div></div>
+<div class="hud" id="nightHud" hidden>
+  <h1 id="nhTitle">Night service</h1>
+  <p id="nhInfo"></p>
+  <p id="nhGoal" class="goal"></p>
+  <p class="tag">WASD to walk · E or SPACE to act · click the deck to walk there</p>
+</div>
+<div id="rail" hidden></div>
+<div id="carry" hidden></div>
+<button id="actBtn" type="button" hidden>E</button>
+<div id="caption" hidden></div>
+<div id="fader"></div>
+<button id="skipBtn" type="button" hidden>Skip ▶▶</button>
+<div id="prep" class="panel wide" hidden>
+  <div class="ptabs" id="ptabs"></div>
+  <div id="pbody"></div>
+  <div class="pfoot"><span id="pinfo"></span><button id="openBtn" type="button">Open for dinner ▶</button></div>
+</div>
+<div id="buildBar" class="hud" hidden style="left:50%;transform:translateX(-50%);top:auto;bottom:calc(14px + env(safe-area-inset-bottom,0px));max-width:min(560px,calc(100vw - 32px))">
+  <h1>Build mode</h1>
+  <p id="buildMsg">Click a table, then click where it should go.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="buildReset" type="button">Reset tables</button><button id="buildDone" type="button" style="background:#2f7a45">Done ▶</button></div>
+</div>
+<div id="title" class="panel" hidden>
+  <h2 class="big">Floating Restaurant</h2>
+  <p class="small">Fish by day. Cook by night.</p>
+  <div class="tbtns">
+    <button id="tContinue" type="button" hidden>Continue</button>
+    <button id="tNew" type="button">New game</button>
+  </div>
+  <p class="small tag" id="tNote"></p>
+</div>
+<div id="waters" class="panel wide map" hidden>
+  <h2>Where to fish today?</h2>
+  <div class="mapwrap">
+    <canvas id="seaMap" width="900" height="600" aria-label="Sea chart: click a sea to choose it"></canvas>
+    <div id="mapCard"></div>
+  </div>
+  <p class="small tag">Click a sea on the chart (or press 1, 2…), then Set sail.</p>
+</div>
+<div id="journalBook" hidden>
+  <div class="jbook">
+    <div class="jpage left"><div id="jLeft"></div></div>
+    <div class="jpage right"><div id="jRight"></div></div>
+    <div id="quill">🪶</div>
+  </div>
+  <div class="jfoot"><button id="jSkip" type="button">Finish writing ▶▶</button><button id="rGo2" type="button" hidden>Go to bed ▶</button></div>
+</div>
+<div id="store" class="panel" hidden>
+  <h2 id="stTitle">Pantry</h2>
+  <p class="small">Click, or press the number, to grab one. Walk away or press E to close.</p>
+  <div id="stGrid"></div>
+  <div id="stHands"></div>
+  <p id="stOrders" class="small"></p>
+  <button id="stClose" type="button">Close (E)</button>
+</div>
+<div id="summary" class="panel" hidden>
+  <h2 id="sTitle">Morning's catch</h2>
+  <div id="sList"></div>
+  <p id="sNote" class="small"></p>
+  <button id="sGo" type="button">Sail back to the restaurant ▶</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/state.js"></script>
+<script src="js/fishart.js"></script>
+<script>
+(function () {
+  // ================= renderer, scene, camera =================
+  const view = document.getElementById('view');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  let pixelRatio = Math.min(1.5, window.devicePixelRatio || 1);
+  renderer.setPixelRatio(pixelRatio);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  view.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 500);
+  function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+  window.addEventListener('resize', resize); resize();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ================= building kit =================
+  const matCache = {};
+  // M(color, opts): a shared material; opts.unique gives a material of its own (for ones that animate).
+  const M = (color, o) => {
+    const opts = Object.assign({}, o), unique = opts.unique; delete opts.unique;
+    const key = color + JSON.stringify(opts);
+    if (!unique && matCache[key]) return matCache[key];
+    const m = new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.75 }, opts));
+    if (!unique) matCache[key] = m; return m;
+  };
+  function add(geo, mat, x, y, z, parent, shadow) {
+    const m = new THREE.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0);
+    m.castShadow = shadow !== false; m.receiveShadow = true; (parent || scene).add(m); return m;
+  }
+  const box = (w, h, d, mat, x, y, z, p) => add(new THREE.BoxGeometry(w, h, d), mat, x, y, z, p);
+  const cyl = (rt, rb, h, mat, x, y, z, p, seg) => add(new THREE.CylinderGeometry(rt, rb, h, seg || 16), mat, x, y, z, p);
+  const ball = (r, mat, x, y, z, p, seg) => add(new THREE.SphereGeometry(r, seg || 16, Math.max(6, (seg || 16) * 0.75)), mat, x, y, z, p);
+  const group = (x, y, z, p) => { const g = new THREE.Group(); g.position.set(x || 0, y || 0, z || 0); (p || scene).add(g); return g; };
+  function canvasTex(w, h, draw, rx, ry) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx || 1, ry || 1); t.anisotropy = 4; return t;
+  }
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  // a soft glow sprite: looks like a light without the cost of one
+  const glowTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,220,150,1)'); gr.addColorStop(0.35, 'rgba(255,190,100,0.45)'); gr.addColorStop(1, 'rgba(255,170,80,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  const glows = [];
+  function glow(x, y, z, size, parent) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, transparent: true, opacity: 0, depthWrite: false })); sp.position.set(x, y, z); sp.scale.set(size, size, 1); (parent || scene).add(sp); glows.push(sp); return sp; }
+  const NoLight = () => new THREE.Object3D(); // placeholder where a real light used to be
+  let seed = 7; const srnd = (a, b) => { seed = (seed * 9301 + 49297) % 233280; return a + (seed / 233280) * (b - a); };
+
+  // Palette (the boat's Beach Shack theme from the 2D game)
+  const C = {
+    hull: 0xfaf3e3, trim: 0x3bb6b0, bottom: 0xb3262b, plank: 0xc99a5c, wood: 0x8a5a34, darkWood: 0x5a3a22,
+    steel: 0xc4ccd4, black: 0x2a2a30, brass: 0xd9a520, cream: 0xfff3d6, cloth: 0xffffff, red: 0xc8423b, green: 0x3f9e5a
+  };
+  const steel = M(C.steel, { metalness: 0.7, roughness: 0.32 });
+  const darkSteel = M(0x55606a, { metalness: 0.6, roughness: 0.4 });
+  const brass = M(C.brass, { metalness: 0.8, roughness: 0.3 });
+  const wood = M(C.wood), darkWood = M(C.darkWood), cream = M(C.cream);
+
+  // ================= light and sky =================
+  const hemi = new THREE.HemisphereLight(0xcfe9ff, 0x3a6a5a, 0.6); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff0d6, 0.85);
+  sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.bias = -0.0004;
+  Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 90 });
+  scene.add(sun); scene.add(sun.target);
+  const DAY = { sky: 0x9ad8ff, water: 0x2a8fc0, deep: 0x1b5f95, hemi: 0.6, sun: 0.85, lamps: 0 };
+  const NIGHT = { sky: 0x0d1a33, water: 0x123a5c, deep: 0x0a2440, hemi: 0.32, sun: 0.16, lamps: 2.0 };
+  scene.fog = new THREE.Fog(DAY.sky, 50, 170);
+
+  // stars and moon (night only)
+  const starGeo = new THREE.BufferGeometry(), starPts = [];
+  for (let i = 0; i < 500; i++) { const a = rnd(0, Math.PI * 2), e = rnd(0.12, 1.4), r = 200; starPts.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPts, 3));
+  const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.4, transparent: true, opacity: 0, fog: false, depthWrite: false });
+  scene.add(new THREE.Points(starGeo, starMat));
+  const moonMat = new THREE.MeshBasicMaterial({ color: 0xfff6d6, transparent: true, opacity: 0, fog: false });
+  add(new THREE.SphereGeometry(7, 24, 16), moonMat, -70, 70, -150, scene, false);
+  // v4.1: a sun you can watch rise in the wake-up scene (hidden the rest of the time)
+  const sunDisc = group(0, -40, -160); sunDisc.visible = false;
+  add(new THREE.SphereGeometry(11, 24, 16), new THREE.MeshBasicMaterial({ color: 0xffd27a, fog: false }), 0, 0, 0, sunDisc, false);
+  { const sg = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffb060, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false })); sg.scale.set(90, 90, 1); sunDisc.add(sg); }
+
+  // ================= the sea =================
+  const seaGeo = new THREE.PlaneGeometry(260, 260, 80, 80); seaGeo.rotateX(-Math.PI / 2);
+  const seaMat = new THREE.MeshStandardMaterial({ color: DAY.water, roughness: 0.25, metalness: 0.15, flatShading: true });
+  const sea = new THREE.Mesh(seaGeo, seaMat); sea.receiveShadow = true; scene.add(sea);
+  const seaTime = { value: 0 };
+  seaMat.onBeforeCompile = sh => {
+    sh.uniforms.uTime = seaTime;
+    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      'vec3 transformed = vec3(position);\n vec4 wpos = modelMatrix * vec4(position, 1.0);\n' +
+      'transformed.y += sin(wpos.x * 0.16 + uTime * 1.0) * 0.32 + cos(wpos.z * 0.2 + uTime * 0.75) * 0.28 + sin((wpos.x + wpos.z) * 0.45 + uTime * 1.6) * 0.07;');
+  };
+  const waveAt = (x, z, t) => Math.sin(x * 0.16 + t * 1.0) * 0.32 + Math.cos(z * 0.2 + t * 0.75) * 0.28 + Math.sin((x + z) * 0.45 + t * 1.6) * 0.07;
+  // foam hugging the hull
+  const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false });
+  const foam = new THREE.Mesh(new THREE.RingGeometry(0.92, 1.05, 48), foamMat); foam.rotation.x = -Math.PI / 2; foam.scale.set(6.2, 15.8, 1); foam.position.z = 1.05; scene.add(foam);
+
+  // islands, clouds and gulls far away
+  function island(x, z, s) {
+    const g = group(x, -0.6, z); g.scale.setScalar(s);
+    add(new THREE.CylinderGeometry(9, 10, 1.2, 20), M(0xf2dca0), 0, 0.4, 0, g, false);
+    add(new THREE.ConeGeometry(7, 7, 9), M(0x4fa860, { flatShading: true }), -1, 4, 0, g, false);
+    add(new THREE.ConeGeometry(4.5, 5, 8), M(0x3f8f50, { flatShading: true }), 3.5, 3, 2, g, false);
+    [[5, 5], [-5, 4.5], [1, 6.5]].forEach(([px, pz]) => {
+      const tr = cyl(0.25, 0.35, 5, M(0x9a6a3a), px, 3, pz, g, 6); tr.rotation.z = 0.15;
+      for (let i = 0; i < 6; i++) { const l = add(new THREE.ConeGeometry(0.6, 3.2, 4), M(0x3fae5a, { flatShading: true }), px + 0.4, 5.6, pz, g, false); l.rotation.set(Math.PI / 2 - 0.5, 0, i * Math.PI / 3); l.translateY(1.4); }
+    });
+  }
+  island(-75, -95, 1.2); island(95, -60, 0.9); island(40, -130, 1.4);
+  const clouds = [];
+  for (let i = 0; i < 8; i++) {
+    const g = group(rnd(-120, 120), rnd(32, 44), rnd(-140, 20));
+    for (let k = 0; k < 5; k++) add(new THREE.SphereGeometry(rnd(3, 5.5), 10, 8), M(0xffffff, { roughness: 1 }), k * 3.6 - 7, rnd(-1, 1.5), rnd(-2, 2), g, false);
+    clouds.push(g);
+  }
+  const gulls = [];
+  for (let i = 0; i < 3; i++) {
+    const g = group(0, 13 + i * 2, 0), wingMat = M(0xffffff, { side: THREE.DoubleSide });
+    add(new THREE.SphereGeometry(0.25, 8, 6), wingMat, 0, 0, 0, g, false).scale.set(1, 0.8, 2);
+    const wings = [-1, 1].map(s => { const w = group(0, 0, 0, g); add(new THREE.PlaneGeometry(1.4, 0.45), wingMat, s * 0.7, 0, 0, w, false).rotation.x = -Math.PI / 2; return w; });
+    gulls.push({ g, wings, r: 18 + i * 6, sp: 0.25 + i * 0.07, ph: i * 2 });
+  }
+
+  // ================= the boat =================
+  const boat = group();
+  const DECK = 1.2, HALF_W = 4.6, BOW = -12, STERN = 15.6, MIDZ = 1.05;
+  const KEND = 11, CABIN_END = 14.8; // kitchen ends / bedroom cabin runs from KEND to CABIN_END
+  const hullShape = new THREE.Shape();
+  hullShape.moveTo(-5, STERN); hullShape.lineTo(5, STERN); hullShape.lineTo(5, -6);
+  hullShape.quadraticCurveTo(4.6, BOW + 1.5, 0, BOW - 1.5); hullShape.quadraticCurveTo(-4.6, BOW + 1.5, -5, -6); hullShape.lineTo(-5, STERN);
+
+  // hull: three bands that taper toward the keel so the sides curve
+  function hullBand(top, height, scale, mat, bevel) {
+    const g = new THREE.ExtrudeGeometry(hullShape, { depth: height, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3, curveSegments: 24 });
+    g.rotateX(Math.PI / 2); g.translate(0, top, -MIDZ); g.scale(scale, 1, scale * 0.985); g.translate(0, 0, MIDZ);
+    return add(g, mat, 0, 0, 0, boat);
+  }
+  hullBand(DECK + 0.05, 0.75, 1, M(C.hull, { roughness: 0.5 }), 0.3);
+  hullBand(DECK - 0.75, 0.22, 1.012, M(C.trim, { roughness: 0.5 }), 0.3);
+  hullBand(DECK - 1.0, 0.9, 0.96, M(C.hull, { roughness: 0.5 }), 0.3);
+  hullBand(DECK - 1.95, 1.0, 0.86, M(C.bottom, { roughness: 0.6 }), 0.35);
+  // portholes along both sides
+  const portholes = [];
+  for (let z = -4; z <= 14; z += 2.6) [-1, 1].forEach(s => {
+    const ring = add(new THREE.TorusGeometry(0.28, 0.07, 8, 20), brass, s * 5.31, DECK - 0.35, z, boat); ring.rotation.y = Math.PI / 2;
+    const glass = add(new THREE.CircleGeometry(0.26, 20), M(0x2b4a7a, { roughness: 0.15, metalness: 0.3, emissive: 0xffb050, emissiveIntensity: 0, unique: true }), s * 5.32, DECK - 0.35, z, boat, false);
+    glass.rotation.y = s * Math.PI / 2; portholes.push(glass);
+  });
+  // the restaurant's name on the stern
+  const nameTex = canvasTex(1024, 160, (g, w, h) => {
+    g.fillStyle = '#faf3e3'; g.fillRect(0, 0, w, h);
+    g.font = '96px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 10; g.strokeStyle = '#2b2140'; g.strokeText('Floating Restaurant', w / 2, h / 2 + 4);
+    g.fillStyle = '#3bb6b0'; g.fillText('Floating Restaurant', w / 2, h / 2 + 4);
+  });
+  add(new THREE.PlaneGeometry(7, 1.1), new THREE.MeshStandardMaterial({ map: nameTex, roughness: 0.6 }), 0, DECK - 0.35, STERN + 0.31, boat, false);
+
+  // deck: painted planks for the dining room, tiles for the kitchen
+  const plankTex = canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = 'hsl(32, 45%, 58%)'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 16; i++) {
+      g.fillStyle = `hsl(32, 45%, ${58 + srnd(-5, 5)}%)`; g.fillRect(i * 32, 0, 32, 64);
+      for (let y = 0; y < h; y += 128) {
+        const off = (i % 2) * 64, l = srnd(-12, 12);
+        g.fillStyle = `hsl(32, 45%, ${58 + l / 2}%)`; g.fillRect(i * 32, y + off, 32, 128);
+        g.strokeStyle = 'rgba(90,55,25,0.18)'; g.lineWidth = 1;
+        for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(i * 32 + srnd(4, 28), y + off); g.bezierCurveTo(i * 32 + srnd(4, 28), y + off + 40, i * 32 + srnd(4, 28), y + off + 80, i * 32 + srnd(4, 28), y + off + 128); g.stroke(); }
+        g.fillStyle = 'rgba(60,35,15,0.55)'; g.fillRect(i * 32, y + off, 32, 2);
+        g.fillStyle = 'rgba(60,40,30,0.6)'; [[6, 8], [26, 8], [6, 120], [26, 120]].forEach(([nx, ny]) => g.fillRect(i * 32 + nx, y + off + ny, 2, 2));
+      }
+      g.fillStyle = 'rgba(60,35,15,0.6)'; g.fillRect(i * 32, 0, 2, h);
+    }
+  }, 0.22, 0.22);
+  const deckGeo = new THREE.ShapeGeometry(hullShape, 24); deckGeo.rotateX(Math.PI / 2); deckGeo.translate(0, DECK + 0.36, 0);
+  const deck = add(deckGeo, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.85, side: THREE.DoubleSide }), 0, 0, 0, boat, false);
+  const WALL_Z = 3.2;
+  const FLOOR = DECK + 0.36;
+  const tileTex = canvasTex(256, 256, (g, w, h) => {
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#2f3b52' : '#f2ede2'; g.fillRect(i * 64, j * 64, 64, 64); }
+    g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 2; for (let i = 0; i <= 4; i++) { g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke(); }
+  }, 2.4, 2);
+  const tiles = add(new THREE.PlaneGeometry(9.5, KEND - WALL_Z - 0.1), new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.4 }), 0, FLOOR + 0.01, (KEND + WALL_Z) / 2 - 0.05, boat, false);
+  tiles.rotation.x = -Math.PI / 2;
+
+  // railings that follow the hull, with a gap for the gangplank
+  const outline = hullShape.getSpacedPoints(160).map(p => new THREE.Vector3(p.x * 0.95, 0, (p.y - MIDZ) * 0.975 + MIDZ));
+  const GANG = [-0.4, 2.2];
+  const inGap = v => v.x > 3 && v.z > GANG[0] && v.z < GANG[1];
+  const railMat = M(0xffffff, { roughness: 0.4 });
+  let run = [], dist = 0;
+  const flushRail = () => { if (run.length > 1) add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(run.map(v => new THREE.Vector3(v.x, FLOOR + 0.95, v.z))), run.length * 2, 0.07, 6, false), M(C.trim, { roughness: 0.4 }), 0, 0, 0, boat); run = []; };
+  outline.forEach((v, i) => {
+    if (inGap(v)) { flushRail(); return; }
+    run.push(v);
+    if (i > 0) dist += v.distanceTo(outline[i - 1]);
+    if (dist > 1.15) { dist = 0; cyl(0.05, 0.05, 0.95, railMat, v.x, FLOOR + 0.47, v.z, boat, 6); }
+  });
+  flushRail();
+  [GANG[0], GANG[1]].forEach(z => { cyl(0.09, 0.09, 1.3, brass, 4.75, FLOOR + 0.65, z, boat, 8); ball(0.12, brass, 4.75, FLOOR + 1.32, z, boat, 8); });
+
+  // Solid things the chef cannot walk through: [x0, z0, x1, z1]
+  const blocks = [];
+  const solid = (x, z, w, d) => blocks.push([x - w / 2, z - d / 2, x + w / 2, z + d / 2]);
+
+  // ================= dining-kitchen wall: wainscot, door, pass window =================
+  const wallPaint = M(0xf2e6c9), wainscot = M(0x6b8f8a);
+  function wall(x0, x1, h) {
+    const w = x1 - x0, x = (x0 + x1) / 2;
+    box(w, h, 0.28, wallPaint, x, FLOOR + h / 2, WALL_Z, boat);
+    box(w + 0.02, 0.5, 0.3, wainscot, x, FLOOR + 0.25, WALL_Z, boat);
+    box(w + 0.06, 0.08, 0.38, wood, x, FLOOR + h + 0.04, WALL_Z, boat);
+    solid(x, WALL_Z, w, 0.3);
+  }
+  wall(-4.8, -2.2, 1.35); wall(-0.2, 1.4, 1.35); wall(3.2, 4.8, 1.35);
+  // door frame with a hanging sign
+  [-2.2, -0.2].forEach(x => box(0.16, 2.3, 0.34, darkWood, x, FLOOR + 1.15, WALL_Z, boat));
+  box(2.2, 0.16, 0.34, darkWood, -1.2, FLOOR + 2.3, WALL_Z, boat);
+  function signBoard(text, x, y, z, w, ry, parent) {
+    const tex = canvasTex(512, 128, (g, cw, ch) => {
+      g.fillStyle = '#5a3a22'; g.fillRect(0, 0, cw, ch); g.strokeStyle = '#ffe9a8'; g.lineWidth = 8; g.strokeRect(8, 8, cw - 16, ch - 16);
+      g.fillStyle = '#ffe9a8'; g.font = '64px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, cw / 2, ch / 2 + 4);
+    });
+    const m = add(new THREE.PlaneGeometry(w, w / 4), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 }), x, y, z, parent || boat, false); m.rotation.y = ry || 0; return m;
+  }
+  signBoard('KITCHEN', -1.2, FLOOR + 1.95, WALL_Z - 0.18, 1.7, Math.PI);
+  signBoard('KITCHEN', -1.2, FLOOR + 1.95, WALL_Z + 0.18, 1.7, 0);
+  // the pass: shelf, heat lamps, ticket rail, bell
+  box(1.8, 0.9, 0.28, wallPaint, 2.3, FLOOR + 0.45, WALL_Z, boat); solid(2.3, WALL_Z, 1.8, 0.3);
+  box(1.9, 0.08, 0.8, steel, 2.3, FLOOR + 0.94, WALL_Z, boat);
+  [1.8, 2.8].forEach(x => { cyl(0.02, 0.02, 0.9, steel, x, FLOOR + 1.45, WALL_Z, boat, 6); const lamp = add(new THREE.ConeGeometry(0.22, 0.3, 14, 1, true), M(0xff8a3c, { side: THREE.DoubleSide, emissive: 0xff5a1a, emissiveIntensity: 0.8 }), x, FLOOR + 1.75, WALL_Z, boat); lamp.rotation.x = 0; });
+  box(1.9, 0.05, 0.05, steel, 2.3, FLOOR + 1.92, WALL_Z + 0.2, boat);
+  for (let i = 0; i < 4; i++) { const t = box(0.22, 0.3, 0.01, M(0xfffbe8), 1.65 + i * 0.42, FLOOR + 1.76, WALL_Z + 0.22, boat); t.rotation.z = srnd(-0.08, 0.08); }
+  cyl(0.11, 0.17, 0.12, brass, 3.0, FLOOR + 1.04, WALL_Z - 0.2, boat); ball(0.04, brass, 3.0, FLOOR + 1.12, WALL_Z - 0.2, boat, 8);
+  // a plated dish waiting on the pass
+  const plate = (x, y, z, p) => { cyl(0.26, 0.2, 0.04, M(0xffffff, { roughness: 0.3 }), x, y, z, p, 20); return cyl(0.17, 0.17, 0.045, M(0xf2f2ee, { roughness: 0.3 }), x, y + 0.005, z, p, 20); };
+
+  // ================= fish model (tank, grill, jumper) =================
+  function fishModel(color, s, parent) {
+    const g = group(0, 0, 0, parent); g.scale.setScalar(s);
+    const bodyMat = M(color, { roughness: 0.4 });
+    add(new THREE.SphereGeometry(0.5, 14, 10), bodyMat, 0, 0, 0, g).scale.set(1.3, 0.75, 0.42);
+    const tail = add(new THREE.ConeGeometry(0.32, 0.5, 4), bodyMat, -0.75, 0, 0, g); tail.rotation.z = Math.PI / 2; tail.scale.z = 0.25;
+    const fin = add(new THREE.ConeGeometry(0.16, 0.35, 4), bodyMat, -0.05, 0.38, 0, g); fin.scale.z = 0.2; fin.rotation.z = -0.4;
+    [-1, 1].forEach(s2 => { ball(0.08, M(0xffffff), 0.42, 0.08, s2 * 0.18, g, 8); ball(0.045, M(0x1a1026), 0.47, 0.08, s2 * 0.21, g, 6); });
+    return g;
+  }
+
+  // ================= kitchen =================
+  const counterTop = M(0xe8e4dc, { roughness: 0.35 }), cabinet = M(0x3f6f8a), butcher = M(0xc98a4a, { roughness: 0.6 });
+  function cabinets(x, z, w, d, faceZ, top) {
+    box(w, 0.85, d, cabinet, x, FLOOR + 0.425, z, boat);
+    box(w + 0.08, 0.08, d + 0.08, top || counterTop, x, FLOOR + 0.89, z, boat);
+    box(w - 0.04, 0.08, d - 0.04, M(0x22333f), x, FLOOR + 0.04, z, boat);
+    const doors = Math.max(1, Math.round(w / 0.7));
+    for (let i = 0; i < doors; i++) {
+      const dx = x - w / 2 + (i + 0.5) * (w / doors);
+      if (faceZ) { box(w / doors - 0.1, 0.6, 0.03, M(0x4f87a5), dx, FLOOR + 0.45, z + faceZ * (d / 2 + 0.01), boat); box(0.18, 0.04, 0.05, brass, dx, FLOOR + 0.66, z + faceZ * (d / 2 + 0.04), boat); }
+    }
+    solid(x, z, w, d);
+  }
+  const KZ = 9.85; // the back counter run, along the stern
+  // grill
+  box(2.2, 0.85, 1.1, darkSteel, -3.5, FLOOR + 0.425, KZ, boat); solid(-3.5, KZ, 2.2, 1.1);
+  box(2.24, 0.1, 1.14, steel, -3.5, FLOOR + 0.9, KZ, boat);
+  const coals = box(1.9, 0.06, 0.85, M(0xff4b1b, { emissive: 0xff3010, emissiveIntensity: 1, unique: true }), -3.5, FLOOR + 0.93, KZ, boat);
+  for (let i = 0; i < 10; i++) box(0.04, 0.04, 0.9, M(0x1a1a1e, { metalness: 0.6 }), -4.35 + i * 0.19, FLOOR + 1.0, KZ, boat);
+  [[-3.9, 0.15], [-3.1, -0.2]].forEach(([fx, fz], i) => { const f = fishModel([0xd9a060, 0xc98a50][i], 0.75, boat); f.position.set(fx, FLOOR + 1.12, KZ + fz); f.rotation.x = -Math.PI / 2; f.rotation.z = i ? 0.3 : -0.2; });
+  for (let i = 0; i < 3; i++) cyl(0.05, 0.05, 0.06, M(0x1a1a1e), -4.2 + i * 0.7, FLOOR + 0.62, KZ - 0.57, boat, 10).rotation.x = Math.PI / 2;
+  // fryer
+  box(1.3, 0.85, 1.1, steel, -1.75, FLOOR + 0.425, KZ, boat); solid(-1.75, KZ, 1.3, 1.1);
+  box(1.0, 0.04, 0.75, M(0xe8a830, { roughness: 0.15, emissive: 0x6a3a00, emissiveIntensity: 0.4 }), -1.75, FLOOR + 0.86, KZ, boat);
+  [-2.0, -1.5].forEach(x => {
+    const bk = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.4, 0.22, 0.5)), new THREE.LineBasicMaterial({ color: 0x555555 }));
+    bk.position.set(x, FLOOR + 0.98, KZ - 0.05); boat.add(bk);
+    box(0.04, 0.04, 0.45, M(0x1a1a1e), x, FLOOR + 1.12, KZ - 0.5, boat);
+  });
+  // stove with four burners, a pot and a pan
+  box(2.3, 0.85, 1.1, M(0x2f3540, { metalness: 0.4, roughness: 0.5 }), 0.15, FLOOR + 0.425, KZ, boat); solid(0.15, KZ, 2.3, 1.1);
+  box(2.34, 0.06, 1.14, M(0x1a1a1e, { roughness: 0.3, metalness: 0.5 }), 0.15, FLOOR + 0.88, KZ, boat);
+  const burners = [];
+  [[-0.4, -0.22], [0.7, -0.22], [-0.4, 0.25], [0.7, 0.25]].forEach(([bx, bz]) => {
+    const r = add(new THREE.TorusGeometry(0.2, 0.04, 6, 20), M(0x3a3a3a, { emissive: 0xff3a10, emissiveIntensity: 0.6, unique: true }), bx, FLOOR + 0.93, KZ + bz, boat);
+    r.rotation.x = Math.PI / 2; burners.push(r);
+  });
+  for (let i = 0; i < 4; i++) cyl(0.06, 0.06, 0.06, M(0xe8e4dc), -0.75 + i * 0.6, FLOOR + 0.62, KZ - 0.57, boat, 10).rotation.x = Math.PI / 2;
+  const potMat = M(0xb8c0c8, { metalness: 0.8, roughness: 0.25 });
+  cyl(0.34, 0.3, 0.46, potMat, -0.4, FLOOR + 1.18, KZ - 0.22, boat, 20);
+  cyl(0.32, 0.32, 0.03, M(0xe0a050, { emissive: 0x402000 }), -0.4, FLOOR + 1.39, KZ - 0.22, boat, 20);
+  [-1, 1].forEach(s => add(new THREE.TorusGeometry(0.08, 0.025, 6, 10), potMat, -0.4 + s * 0.36, FLOOR + 1.3, KZ - 0.22, boat));
+  cyl(0.3, 0.26, 0.08, M(0x2a2a30, { metalness: 0.5, roughness: 0.4 }), 0.7, FLOOR + 0.98, KZ + 0.25, boat, 20);
+  box(0.06, 0.04, 0.5, M(0x2a2a30), 0.7, FLOOR + 1.0, KZ - 0.25, boat).rotation.y = 0.3;
+  [[0.62, 0], [0.78, 0.1]].forEach(([ex, ez]) => { cyl(0.08, 0.08, 0.02, M(0xffffff), ex, FLOOR + 1.03, KZ + 0.25 + ez, boat, 12); cyl(0.04, 0.04, 0.025, M(0xffc830), ex, FLOOR + 1.035, KZ + 0.25 + ez, boat, 10); });
+  // prep counter: butcher block, cutting board, knife, vegetables
+  cabinets(3.7, KZ, 1.8, 1.1, -1, butcher);
+  box(0.8, 0.05, 0.55, M(0xe8c48a), 3.35, FLOOR + 0.96, KZ - 0.1, boat);
+  box(0.45, 0.012, 0.09, M(0xe8eef2, { metalness: 0.9, roughness: 0.2 }), 3.3, FLOOR + 0.995, KZ - 0.15, boat).rotation.y = 0.4;
+  box(0.16, 0.04, 0.06, darkWood, 3.05, FLOOR + 1.0, KZ - 0.04, boat).rotation.y = 0.4;
+  [[3.55, -0.3], [3.7, -0.15], [3.85, -0.32]].forEach(([vx, vz]) => ball(0.08, M(0xe8344e, { roughness: 0.4 }), vx, FLOOR + 1.06, KZ + vz, boat, 10));
+  for (let i = 0; i < 3; i++) { const car = add(new THREE.ConeGeometry(0.05, 0.36, 8), M(0xff7a2b), 3.1 + i * 0.08, FLOOR + 1.02, KZ + 0.25, boat); car.rotation.z = Math.PI / 2; car.rotation.y = 0.2 * i; }
+  add(new THREE.SphereGeometry(0.26, 18, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), M(0xd9e6ee, { side: THREE.DoubleSide, roughness: 0.3 }), 4.2, FLOOR + 1.18, KZ + 0.15, boat);
+  ball(0.08, M(C.green), 4.15, FLOOR + 1.07, KZ + 0.15, boat, 8); ball(0.08, M(0x7ad04a), 4.27, FLOOR + 1.07, KZ + 0.2, boat, 8);
+
+  // ================= kitchen / bedroom wall, with the bedroom door =================
+  const DOOR = [1.35, 2.75];
+  [[-4.8, DOOR[0]], [DOOR[1], 4.8]].forEach(([x0, x1]) => {
+    const w = x1 - x0, x = (x0 + x1) / 2;
+    box(w, 2.5, 0.28, M(0xf2e6c9), x, FLOOR + 1.25, KEND, boat);
+    box(w + 0.02, 0.5, 0.3, M(0x6b8f8a), x, FLOOR + 0.25, KEND, boat);
+    solid(x, KEND, w, 0.3);
+  });
+  DOOR.forEach(x => box(0.16, 2.3, 0.34, darkWood, x, FLOOR + 1.15, KEND, boat));
+  box(1.6, 0.2, 0.34, darkWood, (DOOR[0] + DOOR[1]) / 2, FLOOR + 2.4, KEND, boat);
+  const shelf = M(C.wood);
+  // spice shelves right of the door, hanging pans over the grill and fryer
+  [1.7, 2.2].forEach(y => box(1.8, 0.06, 0.3, shelf, 3.7, FLOOR + y, KEND - 0.3, boat));
+  const jarCols = [0xe8344e, 0xffd23c, 0x3f9e5a, 0xff8a3c, 0x8e4a9e, 0xfff3d6, 0x5bc8ff];
+  for (let i = 0; i < 8; i++) { const y = i < 4 ? 1.7 : 2.2, jx = 3.05 + (i % 4) * 0.43; cyl(0.09, 0.09, 0.24, M(jarCols[i % 7], { roughness: 0.35 }), jx, FLOOR + y + 0.15, KEND - 0.3, boat, 10); cyl(0.095, 0.095, 0.05, M(0x2a2a30), jx, FLOOR + y + 0.29, KEND - 0.3, boat, 10); }
+  box(4.0, 0.05, 0.05, steel, -2.6, FLOOR + 2.0, KEND - 0.25, boat);
+  for (let i = 0; i < 5; i++) {
+    const px = -4.3 + i * 0.85, r = 0.18 + (i % 3) * 0.05;
+    cyl(0.012, 0.012, 0.3, steel, px, FLOOR + 1.85, KEND - 0.25, boat, 4);
+    const pan = cyl(r, r * 0.85, 0.08, M(i % 2 ? 0xc87533 : 0x3a3a40, { metalness: 0.8, roughness: 0.3 }), px, FLOOR + 1.5 - r, KEND - 0.22, boat, 18); pan.rotation.x = Math.PI / 2;
+  }
+  // sink and dish rack on the right side
+  cabinets(4.15, 6.4, 1.1, 3.4, 0);
+  box(0.85, 0.05, 1.0, M(0x9fb4c4, { metalness: 0.8, roughness: 0.2 }), 4.15, FLOOR + 0.92, 7.3, boat);
+  box(0.75, 0.02, 0.9, M(0x5bc8ff, { roughness: 0.05, transparent: true, opacity: 0.7 }), 4.15, FLOOR + 0.9, 7.3, boat);
+  cyl(0.035, 0.035, 0.45, steel, 4.6, FLOOR + 1.15, 7.3, boat, 8);
+  const spout = add(new THREE.TorusGeometry(0.16, 0.03, 6, 12, Math.PI), steel, 4.45, FLOOR + 1.37, 7.3, boat); spout.rotation.y = Math.PI / 2;
+  for (let i = 0; i < 6; i++) { const pl = cyl(0.22, 0.22, 0.025, M(0xffffff, { roughness: 0.3 }), 4.15, FLOOR + 1.14, 5.5 + i * 0.07, boat, 18); pl.rotation.x = Math.PI / 2 - 0.25; }
+  for (let i = 0; i < 5; i++) cyl(0.2, 0.17, 0.025, M(0xffffff, { roughness: 0.3 }), 4.15, FLOOR + 0.95 + i * 0.03, 4.75, boat, 18);
+  // fish tank on the left side
+  cabinets(-4.15, 6.3, 1.1, 2.4, 0, M(0x3a4a5a));
+  const tankH = 1.1, tankY = FLOOR + 0.93 + tankH / 2;
+  box(0.95, 0.06, 2.25, M(0x1a2a3a), -4.15, FLOOR + 0.96, 6.3, boat);
+  box(0.9, 0.1, 2.2, M(0xe8d9a8), -4.15, FLOOR + 1.02, 6.3, boat);
+  add(new THREE.BoxGeometry(0.92, tankH, 2.22), new THREE.MeshStandardMaterial({ color: 0x8fe0ff, transparent: true, opacity: 0.32, roughness: 0.05, metalness: 0.1, depthWrite: false }), -4.15, tankY, 6.3, boat, false);
+  const tankFrame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.92, tankH, 2.22)), new THREE.LineBasicMaterial({ color: 0x2a2a30 }));
+  tankFrame.position.set(-4.15, tankY, 6.3); boat.add(tankFrame);
+  for (let i = 0; i < 3; i++) { const k = add(new THREE.ConeGeometry(0.06, 0.5 + i * 0.12, 5), M(0x2f9e5b), -4.15 + srnd(-0.2, 0.2), FLOOR + 1.3, 5.6 + i * 0.6, boat); k.rotation.z = srnd(-0.2, 0.2); }
+  const tankFish = [0xffd23c, 0x7dffb0, 0xe58fb0, 0x5bc8ff].map((c, i) => { const f = fishModel(c, 0.32, boat); f.position.set(-4.15 + srnd(-0.2, 0.2), FLOOR + 1.3 + i * 0.2, 6.3); f.rotation.y = Math.PI / 2; return f; });
+  // produce crates by the wall
+  function crate(x, z, contents, p) {
+    const c = group(x, FLOOR, z, p || boat);
+    box(0.8, 0.45, 0.6, M(0xc9a46a), 0, 0.225, 0, c);
+    [-0.12, 0.12].forEach(y => box(0.82, 0.05, 0.62, M(0x9a7445), 0, 0.225 + y, 0, c));
+    for (let i = 0; i < 9; i++) ball(0.11, M(contents[i % contents.length], { roughness: 0.45 }), -0.25 + (i % 3) * 0.25, 0.48, -0.17 + Math.floor(i / 3) * 0.17, c, 10);
+    return c;
+  }
+  crate(-4.1, 4.1, [0xe8344e, 0xff6a3c]); crate(-3.2, 4.1, [0x7ad04a, 0x3f9e5a]); solid(-3.65, 4.1, 1.8, 0.65);
+  const diningLight = new THREE.PointLight(0xffc070, 0, 18, 1.5); diningLight.position.set(0, FLOOR + 3.2, -3); boat.add(diningLight);
+  const kLight = new THREE.PointLight(0xfff0d0, 0, 12, 2); kLight.position.set(0, FLOOR + 3.4, 7); boat.add(kLight);
+
+  // ================= bedroom cabin (behind the kitchen) =================
+  const CAB_MID = (KEND + CABIN_END) / 2, CAB_LEN = CABIN_END - KEND;
+  const cabinWall = M(0x3bb6b0, { roughness: 0.6 }), cabinIn = M(0xf6ead0, { roughness: 0.8 });
+  // walls: inner cream, outer teal; back wall is solid
+  // the back wall faces the camera, so it fades with the roof when the chef is inside
+  const backMat = new THREE.MeshStandardMaterial({ color: 0x3bb6b0, roughness: 0.6, transparent: true });
+  const backInMat = new THREE.MeshStandardMaterial({ color: 0xf6ead0, roughness: 0.8, transparent: true });
+  box(9.4, 2.5, 0.28, backMat, 0, FLOOR + 1.25, CABIN_END, boat); solid(0, CABIN_END, 9.4, 0.3);
+  box(9.0, 2.3, 0.04, backInMat, 0, FLOOR + 1.15, CABIN_END - 0.16, boat);
+  box(9.42, 0.3, 0.3, cabinWall, 0, FLOOR + 0.15, CABIN_END, boat);
+  [-1, 1].forEach(s => {
+    box(0.28, 2.5, CAB_LEN, cabinWall, s * 4.6, FLOOR + 1.25, CAB_MID, boat);
+    box(0.04, 2.3, CAB_LEN - 0.3, cabinIn, s * 4.44, FLOOR + 1.15, CAB_MID, boat);
+    // a square window on each side, warm at night
+    const wf = box(0.34, 0.9, 1.1, M(0xfff3d6), s * 4.6, FLOOR + 1.55, CAB_MID - 0.4, boat);
+    const wg = box(0.36, 0.7, 0.9, M(0x8fd3ff, { roughness: 0.1, emissive: 0xffc060, emissiveIntensity: 0, unique: true }), s * 4.6, FLOOR + 1.55, CAB_MID - 0.4, boat);
+    portholes.push(wg);
+    box(0.38, 0.06, 0.9, M(0xfff3d6), s * 4.6, FLOOR + 1.55, CAB_MID - 0.4, boat);
+  });
+  // floor: a darker cosy wood
+  const cabFloor = add(new THREE.PlaneGeometry(9, CAB_LEN), new THREE.MeshStandardMaterial({ map: plankTex, color: 0xb88a5a, roughness: 0.9 }), 0, FLOOR + 0.012, CAB_MID, boat, false);
+  cabFloor.rotation.x = -Math.PI / 2;
+  // pitched shingle roof (fades away when the chef walks in)
+  const shingleTex = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#b3262b'; g.fillRect(0, 0, w, h);
+    for (let r = 0; r < 8; r++) for (let i = 0; i < 9; i++) {
+      const x = i * 32 + (r % 2) * 16 - 16, y = r * 32;
+      g.fillStyle = r % 3 === 0 ? '#c8423b' : '#a8242a'; g.beginPath(); g.arc(x + 16, y + 20, 16, 0, Math.PI); g.lineTo(x, y); g.lineTo(x + 32, y); g.fill();
+      g.strokeStyle = 'rgba(40,10,10,0.5)'; g.lineWidth = 2; g.beginPath(); g.arc(x + 16, y + 20, 16, 0, Math.PI); g.stroke();
+    }
+  }, 4, 2);
+  const roofMat = new THREE.MeshStandardMaterial({ map: shingleTex, roughness: 0.8, transparent: true, opacity: 1, side: THREE.DoubleSide });
+  const roofShape = new THREE.Shape(); roofShape.moveTo(-5.2, 0); roofShape.lineTo(5.2, 0); roofShape.lineTo(0, 1.6); roofShape.lineTo(-5.2, 0);
+  const roofGeo = new THREE.ExtrudeGeometry(roofShape, { depth: CAB_LEN + 0.6, bevelEnabled: false });
+  const roof = add(roofGeo, roofMat, 0, FLOOR + 2.5, KEND - 0.3, boat);
+  const gableMat = new THREE.MeshStandardMaterial({ color: 0xfff3d6, transparent: true, opacity: 1 });
+  const chimney = box(0.45, 1.2, 0.45, M(0x8a8a90, { transparent: true, unique: true }), 2.6, FLOOR + 3.6, CAB_MID + 0.8, boat);
+  // bed: frame, mattress, quilt, pillows
+  const quiltTex = canvasTex(256, 256, (g, w, h) => {
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) { g.fillStyle = ['#3bb6b0', '#fff3d6', '#ff8a3c', '#2f6f8f'][(i + j * 3) % 4]; g.fillRect(i * 32, j * 32, 32, 32); }
+    g.strokeStyle = 'rgba(255,255,255,0.6)'; g.setLineDash([4, 4]); g.lineWidth = 2;
+    for (let i = 0; i <= 8; i++) { g.beginPath(); g.moveTo(i * 32, 0); g.lineTo(i * 32, h); g.moveTo(0, i * 32); g.lineTo(w, i * 32); g.stroke(); }
+  });
+  const bed = group(-3.1, FLOOR, 13.4, boat);
+  box(2.4, 0.35, 1.7, darkWood, 0, 0.3, 0, bed);
+  box(0.14, 1.1, 1.8, darkWood, -1.2, 0.55, 0, bed); box(0.12, 0.7, 1.8, darkWood, 1.2, 0.35, 0, bed);
+  box(2.2, 0.25, 1.55, M(0xffffff, { roughness: 0.9 }), 0, 0.6, 0, bed);
+  box(1.55, 0.12, 1.62, new THREE.MeshStandardMaterial({ map: quiltTex, roughness: 0.9 }), 0.35, 0.76, 0, bed);
+  [-0.38, 0.38].forEach(z => add(new THREE.SphereGeometry(0.32, 14, 10), M(0xfffbf0, { roughness: 0.95 }), -0.75, 0.82, z, bed).scale.set(0.6, 0.35, 1));
+  solid(-3.1, 13.4, 2.4, 1.8);
+  // nightstand with a lamp and a fish book
+  const ns = group(-3.9, FLOOR, 11.9, boat);
+  box(0.6, 0.6, 0.5, wood, 0, 0.3, 0, ns); box(0.5, 0.04, 0.02, brass, 0, 0.42, 0.26, ns);
+  cyl(0.06, 0.1, 0.3, brass, 0, 0.75, 0, ns, 10);
+  const bedLampMat = M(0xffe9a8, { emissive: 0xffb84a, emissiveIntensity: 0.1, unique: true });
+  add(new THREE.CylinderGeometry(0.14, 0.22, 0.24, 14, 1, true), bedLampMat, 0, 0.98, 0, ns).material.side = THREE.DoubleSide;
+  box(0.28, 0.06, 0.2, M(C.trim), 0.12, 0.63, 0.1, ns);
+  const bedLight = NoLight(); glow(-3.9, FLOOR + 1.0, 11.9, 1.6, boat); bedLight.position.set(-3.9, FLOOR + 1.3, 11.9); boat.add(bedLight);
+  // v4.1: a brass alarm clock on the nightstand (it rings in the wake-up scene)
+  const alarm = group(-3.75, FLOOR + 0.6, 11.75, boat);
+  { const face = cyl(0.14, 0.14, 0.08, M(0xd9a520, { metalness: 0.7, roughness: 0.3 }), 0, 0.16, 0, alarm, 18); face.rotation.x = Math.PI / 2;
+    const dial = add(new THREE.CircleGeometry(0.12, 18), M(0xfffbf0), 0, 0.16, 0.045, alarm, false); void dial;
+    box(0.012, 0.08, 0.01, M(0x2b2140), 0, 0.19, 0.05, alarm); box(0.06, 0.012, 0.01, M(0x2b2140), 0.025, 0.16, 0.05, alarm);
+    [-0.09, 0.09].forEach(x => ball(0.06, M(0xd9a520, { metalness: 0.7, roughness: 0.3 }), x, 0.3, 0, alarm, 10));
+    [-0.08, 0.08].forEach(x => cyl(0.012, 0.012, 0.06, darkWood, x, 0.04, 0, alarm, 6)); }
+  solid(-3.9, 11.9, 0.7, 0.6);
+  // round rug
+  const cabRug = add(new THREE.CircleGeometry(1.2, 32), new THREE.MeshStandardMaterial({ map: rugTexFn('#2f6f8f', '#ffe9a8', '#ff8a3c'), transparent: true, roughness: 0.95 }), -0.2, FLOOR + 0.02, 13.0, boat, false);
+  cabRug.rotation.x = -Math.PI / 2;
+  // wardrobe
+  const ward = group(3.75, FLOOR, 14.2, boat);
+  box(1.3, 2.0, 0.7, wood, 0, 1.0, 0, ward); box(0.02, 1.8, 0.02, darkWood, 0, 1.0, -0.36, ward);
+  [-0.1, 0.1].forEach(x => ball(0.04, brass, x, 1.0, -0.37, ward, 8));
+  box(1.4, 0.08, 0.78, darkWood, 0, 2.04, 0, ward);
+  solid(3.75, 14.2, 1.3, 0.7);
+  // desk with the fish journal, a candle and a chair
+  const desk = group(3.9, FLOOR, 12.5, boat);
+  box(0.9, 0.06, 1.3, wood, 0, 0.8, 0, desk);
+  [[-0.38, -0.58], [0.38, -0.58], [-0.38, 0.58], [0.38, 0.58]].forEach(([lx, lz]) => box(0.06, 0.8, 0.06, darkWood, lx, 0.4, lz, desk));
+  const book = group(-0.05, 0.85, 0.1, desk); book.rotation.y = 0.3;
+  [-1, 1].forEach(sd => { const pg = box(0.3, 0.03, 0.42, M(0xfff8e8), sd * 0.15, 0, 0, book); pg.rotation.z = -sd * 0.08; });
+  box(0.02, 0.04, 0.42, M(C.red), 0, -0.01, 0, book);
+  cyl(0.04, 0.04, 0.16, M(0xfff8e8), 0.2, 0.91, -0.4, desk, 10);
+  const deskFlame = add(new THREE.ConeGeometry(0.02, 0.06, 6), new THREE.MeshBasicMaterial({ color: 0xffb030 }), 0.2, 1.02, -0.4, desk, false);
+  chair(-0.75, 0, -Math.PI / 2, desk);
+  solid(3.9, 12.5, 1.0, 1.4);
+  // trophy fish on a plaque above the bed, and a ship's wheel on the wall
+  box(1.4, 0.6, 0.06, darkWood, -2.6, FLOOR + 1.8, KEND + 0.18, boat);
+  const trophy = fishModel(0x6b7a5a, 0.9, boat); trophy.position.set(-2.6, FLOOR + 1.8, KEND + 0.3);
+  const wheel = group(-0.4, FLOOR + 1.6, KEND + 0.2, boat);
+  add(new THREE.TorusGeometry(0.4, 0.05, 8, 24), wood, 0, 0, 0, wheel);
+  for (let i = 0; i < 8; i++) { const sp = box(0.05, 1.1, 0.05, wood, 0, 0, 0, wheel); sp.rotation.z = i * Math.PI / 8; }
+  ball(0.09, brass, 0, 0, 0.03, wheel, 10);
+  // a hanging lamp lights the room at night
+  const cabLight = new THREE.PointLight(0xffd8a0, 0, 9, 2); cabLight.position.set(0, FLOOR + 2.3, CAB_MID); boat.add(cabLight);
+  function rugTexFn(a, b, c) {
+    return canvasTex(256, 256, (g) => {
+      g.fillStyle = a; g.beginPath(); g.arc(128, 128, 126, 0, 7); g.fill();
+      [[b, 108, 8], [c, 86, 6], [b, 60, 4]].forEach(([col, r, lw]) => { g.strokeStyle = col; g.lineWidth = lw; g.beginPath(); g.arc(128, 128, r, 0, 7); g.stroke(); });
+    });
+  }
+
+  // ================= dining room =================
+  const rugTex = canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#b3262b'; g.beginPath(); g.arc(128, 128, 126, 0, 7); g.fill();
+    g.strokeStyle = '#ffe9a8'; g.lineWidth = 8; g.beginPath(); g.arc(128, 128, 112, 0, 7); g.stroke();
+    g.strokeStyle = '#3bb6b0'; g.lineWidth = 6; g.beginPath(); g.arc(128, 128, 90, 0, 7); g.stroke();
+    for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(128 + Math.cos(a) * 101, 128 + Math.sin(a) * 101, 5, 0, 7); g.fill(); }
+  });
+  const rugMat = new THREE.MeshStandardMaterial({ map: rugTex, transparent: true, roughness: 0.95 });
+  const chairMat = M(0x3bb6b0, { roughness: 0.6 });
+  function chair(x, z, ry, p) {
+    const c = group(x, 0, z, p); c.rotation.y = ry;
+    box(0.5, 0.07, 0.5, M(0x3bb6b0, { roughness: 0.6 }), 0, 0.48, 0, c);
+    [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]].forEach(([lx, lz]) => box(0.05, 0.48, 0.05, wood, lx, 0.24, lz, c));
+    box(0.5, 0.55, 0.06, M(0x3bb6b0, { roughness: 0.6 }), 0, 0.78, 0.22, c);
+    for (let i = 0; i < 3; i++) box(0.06, 0.4, 0.07, M(0xfff3d6), -0.15 + i * 0.15, 0.76, 0.22, c);
+  }
+  const candles = [];
+  // red and white striped tablecloths: stripes across the top, running down the drape
+  const stripes = (n) => canvasTex(256, 256, (g, w, h) => { for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#fffaf0' : '#d23a34'; g.fillRect(i * w / n, 0, w / n + 1, h); } g.fillStyle = 'rgba(255,255,255,0.18)'; for (let i = 0; i < n * 2; i++) g.fillRect(0, i * h / (n * 2), w, 3); });
+  const clothTopMat = new THREE.MeshStandardMaterial({ map: stripes(14), roughness: 0.9 });
+  const clothSideTex = stripes(14); clothSideTex.repeat.set(4, 1);
+  const clothSideMat = new THREE.MeshStandardMaterial({ map: clothSideTex, roughness: 0.9, side: THREE.DoubleSide });
+  const tableGroups = [];
+  const decorSets = { lanterns: [], plants: [], stringlights: [], rugs: [] };
+  // v4.1: every table has 2 seats, plus 2 more that show when it becomes a BIG table; the VIP table gets ropes.
+  // parent/y let the patio tables stand on the dock; x, z are always boat coordinates.
+  function table(x, z, parent, py) {
+    const onDock = !!parent, t = group(onDock ? x - dock.position.x : x, onDock ? py : FLOOR, onDock ? z - dock.position.z : z, parent || boat);
+    t.userData.at = { x, z }; t.userData.dock = onDock;
+    const rug = add(new THREE.CircleGeometry(1.75, 40), rugMat, 0, 0.012, 0, t, false); rug.rotation.x = -Math.PI / 2; decorSets.rugs.push(rug);
+    cyl(0.08, 0.1, 0.85, wood, 0, 0.43, 0, t, 10); cyl(0.4, 0.45, 0.05, wood, 0, 0.03, 0, t, 16);
+    t.userData.top = cyl(0.85, 0.85, 0.04, clothTopMat, 0, 0.88, 0, t, 32);
+    add(new THREE.CylinderGeometry(0.86, 0.95, 0.42, 32, 1, true), clothSideMat, 0, 0.68, 0, t);
+    // centerpiece candle in a jar
+    cyl(0.09, 0.09, 0.16, M(0xffe9a8, { transparent: true, opacity: 0.5, roughness: 0.1 }), 0, 0.98, 0, t, 12);
+    cyl(0.05, 0.05, 0.1, M(0xfff8e8), 0, 0.96, 0, t, 10);
+    const flame = add(new THREE.ConeGeometry(0.025, 0.07, 6), new THREE.MeshBasicMaterial({ color: 0xffb030 }), 0, 1.05, 0, t, false);
+    const cl = NoLight(); glow(0, 1.05, 0, 0.9, t); cl.position.set(0, 1.2, 0); t.add(cl); candles.push({ flame, cl });
+    const setting = (a, p) => {
+      chair(Math.cos(a) * 1.25, Math.sin(a) * 1.25, Math.PI / 2 - a, p);
+      const px = Math.cos(a) * 0.55, pz = Math.sin(a) * 0.55;
+      plate(px, 0.92, pz, p);
+      box(0.02, 0.01, 0.22, steel, px + Math.cos(a + Math.PI / 2) * 0.32, 0.905, pz + Math.sin(a + Math.PI / 2) * 0.32, p, false).rotation.y = -a;
+      cyl(0.045, 0.035, 0.14, M(0xdff4ff, { transparent: true, opacity: 0.55, roughness: 0.05 }), px + Math.cos(a - 0.7) * 0.3, 0.97, pz + Math.sin(a - 0.7) * 0.3, p, 10);
+    };
+    [0, Math.PI].forEach(a => setting(a, t));
+    const extra = group(0, 0, 0, t); extra.visible = false; [Math.PI / 2, -Math.PI / 2].forEach(a => setting(a, extra)); t.userData.extra = extra;
+    // VIP: gold rope posts and a gold runner
+    const vip = group(0, 0, 0, t); vip.visible = false; t.userData.vip = vip;
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.5; cyl(0.05, 0.07, 0.9, brass, Math.cos(a) * 1.75, 0.45, Math.sin(a) * 1.75, vip, 8); ball(0.08, brass, Math.cos(a) * 1.75, 0.92, Math.sin(a) * 1.75, vip, 8); }
+    add(new THREE.TorusGeometry(1.75, 0.03, 6, 48), M(0xb3262b), 0, 0.78, 0, vip, false).rotation.x = Math.PI / 2;
+    add(new THREE.BoxGeometry(1.5, 0.01, 0.4), M(0xd9a520, { metalness: 0.4, roughness: 0.4 }), 0, 0.905, 0, vip, false);
+    solid(x, z, 2.6, 2.6); t.userData.block = blocks[blocks.length - 1]; t.userData.home = blocks[blocks.length - 1].slice(); tableGroups.push(t);
+    return t;
+  }
+  table(-2.3, -0.8); table(2.3, -0.8);
+  table(-2.3, -5.0); table(2.3, -5.0);
+  // potted plants
+  function plant(x, z, s) {
+    const g = group(x, FLOOR, z, boat); g.scale.setScalar(s || 1);
+    cyl(0.28, 0.2, 0.45, M(0xc9653a), 0, 0.225, 0, g, 14); cyl(0.3, 0.3, 0.06, M(0xb3552f), 0, 0.45, 0, g, 14);
+    for (let i = 0; i < 6; i++) add(new THREE.IcosahedronGeometry(0.22, 0), M(i % 2 ? 0x3f9e5a : 0x58b86a, { flatShading: true }), srnd(-0.18, 0.18), 0.6 + srnd(0, 0.35), srnd(-0.18, 0.18), g);
+    solid(x, z, 0.7, 0.7); decorSets.plants.push(g); g.userData.block = blocks[blocks.length - 1]; g.userData.home = g.userData.block.slice();
+  }
+  plant(-4.0, 2.4); plant(0.9, 2.5, 0.9); plant(-3.2, -8.2, 0.9); plant(3.2, -8.2, 0.9);
+  // host podium by the gangway, with the menu and a little lamp
+  const host = group(3.6, FLOOR, 2.3, boat); host.rotation.y = -Math.PI / 2;
+  box(0.8, 1.05, 0.55, darkWood, 0, 0.525, 0, host); box(0.9, 0.06, 0.65, wood, 0, 1.08, 0, host);
+  box(0.6, 0.6, 0.02, M(0x7a4e2d), 0, 0.55, 0.285, host);
+  const menuBook = box(0.4, 0.04, 0.3, M(C.red), -0.08, 1.13, 0, host); menuBook.rotation.y = 0.2;
+  cyl(0.03, 0.05, 0.3, brass, 0.28, 1.25, -0.15, host, 8);
+  const hostLampMat = M(0xffe9a8, { emissive: 0xffc860, emissiveIntensity: 0.3, unique: true });
+  add(new THREE.ConeGeometry(0.12, 0.12, 12, 1, true), hostLampMat, 0.28, 1.42, -0.15, host).rotation.x = Math.PI;
+  solid(3.6, 2.3, 0.7, 0.9);
+  const openCanvas = document.createElement('canvas'); openCanvas.width = 256; openCanvas.height = 96;
+  const openTex = new THREE.CanvasTexture(openCanvas);
+  function setOpenSign(open) {
+    const g = openCanvas.getContext('2d'); g.fillStyle = '#5a3a22'; g.fillRect(0, 0, 256, 96); g.strokeStyle = '#ffe9a8'; g.lineWidth = 6; g.strokeRect(6, 6, 244, 84);
+    g.fillStyle = open ? '#5cff8a' : '#ff6b5b'; g.font = '56px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(open ? 'OPEN' : 'CLOSED', 128, 52); openTex.needsUpdate = true;
+  }
+  setOpenSign(false);
+  const openSign = group(4.75, FLOOR + 1.35, 3.0, boat);
+  cyl(0.04, 0.04, 1.4, darkWood, 0, -0.6, 0, openSign, 6);
+  const openBoard = add(new THREE.PlaneGeometry(1.1, 0.42), new THREE.MeshStandardMaterial({ map: openTex, side: THREE.DoubleSide }), 0, 0.25, 0, openSign, false); openBoard.rotation.y = -Math.PI / 2;
+  const openBoard2 = add(new THREE.PlaneGeometry(1.1, 0.42), new THREE.MeshStandardMaterial({ map: openTex }), 0, 0.25, 0.01, openSign, false);
+  // chalkboard A-frame sign
+  const chalk = canvasTex(256, 320, (g, w, h) => {
+    g.fillStyle = '#23302a'; g.fillRect(0, 0, w, h); g.strokeStyle = '#8a5a34'; g.lineWidth = 16; g.strokeRect(0, 0, w, h);
+    g.fillStyle = '#ffe9a8'; g.textAlign = 'center'; g.font = '40px "Lilita One", sans-serif'; g.fillText("TONIGHT", w / 2, 64);
+    g.fillStyle = '#ffffff'; g.font = '26px "Fredoka", sans-serif';
+    ['Grilled Sardine', 'Glowgill Tacos', 'Kelp Wrap'].forEach((l, i) => g.fillText(l, w / 2, 130 + i * 50));
+    g.fillStyle = '#ff8a3c'; g.font = '24px "Fredoka", sans-serif'; g.fillText('fresh today!', w / 2, 290);
+  });
+  const aFrame = group(4.0, FLOOR, -2.8, boat); aFrame.rotation.y = -Math.PI / 2;
+  [-1, 1].forEach(s => { const b = add(new THREE.PlaneGeometry(0.6, 0.78), new THREE.MeshStandardMaterial({ map: chalk, side: THREE.DoubleSide, roughness: 0.9 }), 0, 0.4, s * 0.12, aFrame); b.rotation.x = s * 0.28; b.rotation.y = s > 0 ? 0 : Math.PI; });
+  solid(4.0, -2.8, 0.5, 0.7);
+
+  // striped awnings along both sides of the dining room
+  const awnTex = canvasTex(256, 64, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#fff3d6' : '#e05a3c'; g.fillRect(i * 32, 0, 32, h); } }, 6, 1);
+  [-1, 1].forEach(s => {
+    const len = 9.6, cz = -2.6;
+    const awn = add(new THREE.PlaneGeometry(len, 1.5), new THREE.MeshStandardMaterial({ map: awnTex, side: THREE.DoubleSide, roughness: 0.8 }), s * 4.15, FLOOR + 2.85, cz, boat);
+    awn.rotation.set(-Math.PI / 2, s * 0.45, Math.PI / 2);
+    for (let i = 0; i < 24; i++) {
+      const sc = add(new THREE.CircleGeometry(0.2, 12, 0, Math.PI), M(i % 2 ? 0xfff3d6 : 0xe05a3c, { side: THREE.DoubleSide }), s * 3.48, FLOOR + 2.52, cz - len / 2 + 0.2 + i * 0.4, boat, false);
+      sc.rotation.set(0, Math.PI / 2, Math.PI);
+    }
+    box(0.08, 0.08, len, wood, s * 3.48, FLOOR + 2.55, cz, boat);
+  });
+
+  // lantern posts with hanging lanterns
+  const lamps = [];
+  [[-4.5, -7.2], [4.5, -7.2], [-4.5, -2.9], [4.5, -2.9], [-4.5, 2.0]].forEach(([x, z]) => {
+    const n0 = boat.children.length;
+    cyl(0.07, 0.09, 3.0, darkWood, x, FLOOR + 1.5, z, boat, 8);
+    const arm = box(0.6, 0.06, 0.06, darkWood, x - Math.sign(x) * 0.3, FLOOR + 2.95, z, boat);
+    const lx = x - Math.sign(x) * 0.55;
+    cyl(0.01, 0.01, 0.25, M(0x2a2a30), lx, FLOOR + 2.8, z, boat, 4);
+    add(new THREE.ConeGeometry(0.2, 0.16, 6), M(0x2a2a30, { metalness: 0.5 }), lx, FLOOR + 2.64, z, boat);
+    const glass = cyl(0.13, 0.13, 0.3, M(0xffe9a8, { emissive: 0xffb84a, emissiveIntensity: 0.15, transparent: true, opacity: 0.9, unique: true }), lx, FLOOR + 2.42, z, boat, 6);
+    cyl(0.16, 0.12, 0.06, M(0x2a2a30, { metalness: 0.5 }), lx, FLOOR + 2.25, z, boat, 6);
+    const light = NoLight(); glow(lx, FLOOR + 2.42, z, 2.2, boat); light.position.set(lx, FLOOR + 2.3, z); boat.add(light);
+    lamps.push({ glass, light }); decorSets.lanterns.push(...boat.children.slice(n0));
+  });
+
+  // ================= bow: mast, sail, string lights, ropes, barrels =================
+  const MAST = [0, -9.4];
+  cyl(0.16, 0.22, 8, darkWood, MAST[0], FLOOR + 4, MAST[1], boat, 10);
+  ball(0.2, brass, MAST[0], FLOOR + 8.05, MAST[1], boat, 10);
+  const boom = cyl(0.08, 0.08, 4.0, darkWood, 0, FLOOR + 2.6, MAST[1] + 2.0, boat, 8); boom.rotation.x = Math.PI / 2;
+  const sail = cyl(0.22, 0.18, 3.8, M(0xfff3d6, { roughness: 1 }), 0, FLOOR + 2.85, MAST[1] + 2.0, boat, 10); sail.rotation.x = Math.PI / 2;
+  for (let i = 0; i < 4; i++) { const tie = add(new THREE.TorusGeometry(0.24, 0.025, 6, 14), M(0x8a5a34), 0, FLOOR + 2.85, MAST[1] + 0.6 + i * 0.95, boat); }
+  const flag = add(new THREE.PlaneGeometry(1.1, 0.65, 8, 1), M(C.trim, { side: THREE.DoubleSide }), 0.6, FLOOR + 7.6, MAST[1], boat);
+  const flagBase = Float32Array.from(flag.geometry.attributes.position.array);
+  // string lights from the mast top out to the lantern posts
+  const bulbs = [];
+  const bulbCols = [0xffd23c, 0xff8a3c, 0x7dffb0, 0xff6f91, 0x8fd3ff];
+  const nS = boat.children.length;
+  [[-4.5, -2.9], [4.5, -2.9], [-4.5, 2.0], [3.2, 3.2]].forEach(([x, z], k) => {
+    const a = new THREE.Vector3(MAST[0], FLOOR + 6.6, MAST[1]), b = new THREE.Vector3(x - Math.sign(x || 1) * 0.0, FLOOR + 3.0, z);
+    const mid = a.clone().lerp(b, 0.5); mid.y -= 0.9;
+    const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+    add(new THREE.TubeGeometry(curve, 24, 0.012, 4, false), M(0x2a2a30), 0, 0, 0, boat, false);
+    for (let i = 1; i < 10; i++) {
+      const p = curve.getPoint(i / 10);
+      const bm = new THREE.MeshStandardMaterial({ color: bulbCols[(i + k) % 5], emissive: bulbCols[(i + k) % 5], emissiveIntensity: 0.15 });
+      bulbs.push(add(new THREE.SphereGeometry(0.07, 8, 6), bm, p.x, p.y - 0.08, p.z, boat, false));
+    }
+  });
+  decorSets.stringlights.push(...boat.children.slice(nS));
+  // coiled rope, life ring, barrels
+  for (let i = 0; i < 4; i++) add(new THREE.TorusGeometry(0.42 - i * 0.07, 0.06, 6, 20), M(0xc9a46a, { roughness: 1 }), -1.6, FLOOR + 0.06 + i * 0.1, -10.2, boat).rotation.x = Math.PI / 2;
+  solid(-1.6, -10.2, 1, 1);
+  function barrel(x, z) {
+    const pts = []; for (let i = 0; i <= 10; i++) { const t = i / 10; pts.push(new THREE.Vector2(0.32 + Math.sin(t * Math.PI) * 0.07, t * 0.9)); }
+    add(new THREE.LatheGeometry(pts, 16), M(0x9a6a3a), x, FLOOR, z, boat);
+    [0.15, 0.75].forEach(y => add(new THREE.TorusGeometry(0.36, 0.025, 6, 20), M(0x3a3a40, { metalness: 0.6 }), x, FLOOR + y, z, boat).rotation.x = Math.PI / 2);
+    cyl(0.32, 0.32, 0.02, M(0x7a4e2d), x, FLOOR + 0.9, z, boat, 16);
+    solid(x, z, 0.8, 0.8);
+  }
+  barrel(1.5, -10.0); barrel(2.1, -9.3);
+  const ring = group(-4.62, FLOOR + 0.8, -5.0, boat); ring.rotation.y = Math.PI / 2;
+  for (let i = 0; i < 4; i++) add(new THREE.TorusGeometry(0.42, 0.11, 8, 10, Math.PI / 2), M(i % 2 ? 0xffffff : 0xe8344e), 0, 0, 0, ring).rotation.z = i * Math.PI / 2;
+
+  // ================= dock and gangplank =================
+  const dock = group(9.6, 0, 0.9);
+  const dockTex = canvasTex(256, 256, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = `hsl(30, 30%, ${42 + (i * 37) % 10}%)`; g.fillRect(0, i * 32, w, 31); g.fillStyle = 'rgba(30,20,10,0.5)'; g.fillRect(0, i * 32 + 31, w, 2); } }, 1.5, 3);
+  box(6, 0.25, 9, new THREE.MeshStandardMaterial({ map: dockTex, roughness: 0.9 }), 0, 1.1, 0, dock);
+  for (let i = 0; i < 6; i++) cyl(0.22, 0.22, 3.2, M(0x6a4a2a), i < 3 ? -2.8 : 2.8, -0.2, -3.9 + (i % 3) * 3.9, dock, 10);
+  [-3.2, 3.2].forEach(z => { cyl(0.18, 0.22, 0.4, M(0x2a2a30, { metalness: 0.4 }), -2.6, 1.45, z, dock, 12); cyl(0.26, 0.26, 0.08, M(0x2a2a30, { metalness: 0.4 }), -2.6, 1.68, z, dock, 12); });
+  cyl(0.08, 0.1, 3, darkWood, 2.4, 2.7, -3.6, dock, 8);
+  const dockLampMat = M(0xffe9a8, { emissive: 0xffb84a, emissiveIntensity: 0.15, unique: true });
+  cyl(0.18, 0.18, 0.35, dockLampMat, 2.4, 4.3, -3.6, dock, 6);
+  const dockLight = NoLight(); glow(2.4, 4.3, -3.6, 2.6, dock); dockLight.position.set(2.4, 4.2, -3.6); dock.add(dockLight);
+  barrelAt(dock, 1.8, 2.8); barrelAt(dock, 2.5, 3.4);
+  function barrelAt(p, x, z) { const pts = []; for (let i = 0; i <= 10; i++) { const t = i / 10; pts.push(new THREE.Vector2(0.32 + Math.sin(t * Math.PI) * 0.07, t * 0.9)); } add(new THREE.LatheGeometry(pts, 16), M(0x9a6a3a), x, 1.22, z, p); }
+  const plank = box(2.4, 0.12, 1.2, new THREE.MeshStandardMaterial({ map: dockTex, roughness: 0.9 }), 5.85, FLOOR - 0.15, 0.9);
+  plank.rotation.z = -0.12;
+
+  // ================= v4.1: patio tables, decor you buy, sections, weather and event props =================
+  // two more tables on a dock patio (the 6-table upgrade)
+  table(9.6, -1.9, dock, 1.225); table(9.6, 3.7, dock, 1.225);
+  const tickers = []; // little things that animate every frame
+  // bunting: little flags strung from the mast to the bow corners and along the awnings
+  const bunting = group(0, 0, 0, boat); decorSets.flags = [bunting];
+  [[[0, FLOOR + 5.2, -9.4], [-3.0, FLOOR + 1.3, -8.4]], [[0, FLOOR + 5.2, -9.4], [3.0, FLOOR + 1.3, -8.4]], [[-3.5, FLOOR + 2.55, -7.4], [-3.5, FLOOR + 2.55, 2.2]], [[3.5, FLOOR + 2.55, -7.4], [3.5, FLOOR + 2.55, 2.2]]].forEach(([a, b], k) => {
+    const A0 = new THREE.Vector3(...a), B0 = new THREE.Vector3(...b), mid = A0.clone().lerp(B0, 0.5); mid.y -= 0.35;
+    const cv = new THREE.QuadraticBezierCurve3(A0, mid, B0);
+    add(new THREE.TubeGeometry(cv, 20, 0.01, 4, false), M(0x2a2a30), 0, 0, 0, bunting, false);
+    const n = Math.round(A0.distanceTo(B0) / 0.45);
+    for (let i = 1; i < n; i++) { const p = cv.getPoint(i / n); const f = add(new THREE.ConeGeometry(0.13, 0.26, 3), M([0xe8344e, 0xffd23c, 0x3bb6b0, 0xffffff, 0x3b6fd9][(i + k) % 5], { side: THREE.DoubleSide }), p.x, p.y - 0.15, p.z, bunting, false); f.rotation.z = Math.PI; f.scale.z = 0.15; }
+  });
+  // the name sign: an arch over the gangway
+  const nameCanvas = document.createElement('canvas'); nameCanvas.width = 1024; nameCanvas.height = 192; const nameSignTex = new THREE.CanvasTexture(nameCanvas);
+  function drawName(name, col) {
+    const g = nameCanvas.getContext('2d'); g.fillStyle = '#5a3a22'; g.fillRect(0, 0, 1024, 192); g.strokeStyle = '#ffe9a8'; g.lineWidth = 12; g.strokeRect(10, 10, 1004, 172);
+    g.font = '96px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = col || '#ffe9a8'; g.fillText(name, 512, 100, 960); nameSignTex.needsUpdate = true;
+    const g2 = nameTex.image.getContext('2d'), w = nameTex.image.width, h = nameTex.image.height; g2.fillStyle = '#' + hullMatMain.color.getHexString(); g2.fillRect(0, 0, w, h);
+    g2.font = '96px "Lilita One", "Trebuchet MS", sans-serif'; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.lineWidth = 10; g2.strokeStyle = '#2b2140'; g2.strokeText(name, w / 2, h / 2 + 4, 980); g2.fillStyle = '#' + trimMats[0].color.getHexString(); g2.fillText(name, w / 2, h / 2 + 4, 980); nameTex.needsUpdate = true;
+  }
+  const arch = group(4.75, FLOOR, 0.9, boat); decorSets.sign = [arch];
+  [-1.3, 1.3].forEach(z => cyl(0.07, 0.07, 2.6, darkWood, 0, 1.3, z, arch, 8));
+  add(new THREE.PlaneGeometry(3.0, 0.56), new THREE.MeshStandardMaterial({ map: nameSignTex, side: THREE.DoubleSide, roughness: 0.7 }), 0, 2.45, 0, arch, false).rotation.y = Math.PI / 2;
+  // aquarium wall on the dining side of the kitchen wall
+  const aquarium = group(-3.5, FLOOR, WALL_Z - 0.38, boat); decorSets.aquarium = [aquarium];
+  box(2.2, 0.5, 0.45, darkWood, 0, 0.25, 0, aquarium);
+  add(new THREE.BoxGeometry(2.1, 1.0, 0.4), new THREE.MeshStandardMaterial({ color: 0x5bc8ff, transparent: true, opacity: 0.35, roughness: 0.05, depthWrite: false }), 0, 1.0, 0, aquarium, false);
+  box(2.2, 0.06, 0.45, darkWood, 0, 1.52, 0, aquarium);
+  for (let i = 0; i < 4; i++) { const k = add(new THREE.ConeGeometry(0.05, 0.4 + i * 0.1, 5), M(0x2f9e5b), -0.8 + i * 0.5, 0.7, 0, aquarium); void k; }
+  const aqFish = [0xff8a3c, 0xffd23c, 0x7dffb0, 0xe58fb0].map((c, i) => { const f = fishModel(c, 0.22, aquarium); f.position.set(0, 0.8 + i * 0.15, 0); return f; });
+  tickers.push((dt, t) => { if (!aquarium.visible) return; aqFish.forEach((f, i) => { const k = t * (0.6 + i * 0.2) + i * 2; f.position.x = Math.sin(k) * 0.85; f.rotation.y = Math.cos(k) > 0 ? 0 : Math.PI; f.position.y = 0.8 + i * 0.15 + Math.sin(k * 3) * 0.03; }); });
+  solid(-3.5, WALL_Z - 0.38, 2.2, 0.5); const aqBlock = blocks[blocks.length - 1], aqHome = aqBlock.slice();
+  // sections you build: a Bar and a Sushi counter at the bow
+  function counter(x, label, top) {
+    const g = group(x, FLOOR, -7.5, boat);
+    box(2.0, 1.0, 0.7, M(0x7a4e2d), 0, 0.5, 0, g); box(2.1, 0.08, 0.8, top, 0, 1.04, 0, g);
+    for (let i = 0; i < 3; i++) { cyl(0.18, 0.18, 0.06, M(0xc8423b), -0.6 + i * 0.6, 0.72, 0.65, g, 12); cyl(0.03, 0.03, 0.7, steel, -0.6 + i * 0.6, 0.36, 0.65, g, 6); }
+    const sign = signBoard(label, 0, 1.75, -0.2, 1.6, 0, g); void sign;
+    [-0.9, 0.9].forEach(px => cyl(0.03, 0.03, 0.75, darkWood, px, 1.4, -0.25, g, 6));
+    g.visible = false; solid(x, -7.5, 2.0, 0.7); const b = blocks[blocks.length - 1]; g.userData.block = b; g.userData.home = b.slice(); b[0] = b[2] = 999;
+    return g;
+  }
+  const barSec = counter(-1.6, 'BAR', M(0xd9a520, { metalness: 0.5, roughness: 0.3 })), sushiSec = counter(1.6, 'SUSHI', M(0xf2ede2));
+  [0xc8423b, 0x3f9e5a, 0x5bc8ff, 0xffd23c].forEach((c, i) => { cyl(0.05, 0.06, 0.32, M(c, { transparent: true, opacity: 0.85, roughness: 0.1 }), -0.75 + i * 0.5, 1.24, -0.2, barSec, 8); });
+  [[-0.5, 0xffffff], [0, 0xff8a3c], [0.5, 0x2f9e5b]].forEach(([x, c]) => { cyl(0.12, 0.12, 0.08, M(c), x, 1.12, 0, sushiSec, 12); });
+  // a fishing rod stand by the bow rail, for fishing at night (needs the Deck lanterns)
+  const rodStand = group(-3.55, FLOOR, -6.2, boat); decorSets.lanterns.push(rodStand);
+  { cyl(0.05, 0.07, 1.0, darkWood, 0, 0.5, 0, rodStand, 6); const r = cyl(0.025, 0.04, 2.6, M(0x5a3a22), -0.5, 1.6, 0, rodStand, 6); r.rotation.z = 0.6; box(0.3, 0.3, 0.3, M(0x3f9e5a), 0.35, 0.15, 0.2, rodStand); }
+  // coral reefs around the boat (only in Coral Bay)
+  const reefs = group(0, 0, 0); reefs.visible = false;
+  for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2, r = 22 + (i % 3) * 7, g = group(Math.cos(a) * r, -0.3, Math.sin(a) * r, reefs); for (let k = 0; k < 4; k++) add(new THREE.IcosahedronGeometry(0.8 + k * 0.2, 0), M([0xff6f91, 0xff8fb0, 0xffb347, 0xc59bff][(i + k) % 4], { flatShading: true }), k * 0.9 - 1.4, 0.2 + (k % 2) * 0.4, (k % 3) * 0.6, g, false); }
+  // rain, for storms
+  const rainGeo = new THREE.BufferGeometry(), rainN = 900, rainPos = new Float32Array(rainN * 3);
+  for (let i = 0; i < rainN; i++) { rainPos[i * 3] = rnd(-25, 25); rainPos[i * 3 + 1] = rnd(0, 25); rainPos[i * 3 + 2] = rnd(-25, 25); }
+  rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+  const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({ color: 0xbfdfff, size: 0.18, transparent: true, opacity: 0.7, depthWrite: false })); rain.visible = false; rain.frustumCulled = false; scene.add(rain);
+  // the rival food boat (an event)
+  const rival = group(20, 0, -9); rival.visible = false;
+  { const hullR = new THREE.Shape(); hullR.moveTo(-2.5, 4); hullR.lineTo(2.5, 4); hullR.lineTo(2.5, -2); hullR.quadraticCurveTo(2, -4.5, 0, -5.5); hullR.quadraticCurveTo(-2, -4.5, -2.5, -2); hullR.lineTo(-2.5, 4);
+    const hg = new THREE.ExtrudeGeometry(hullR, { depth: 1.4, bevelEnabled: false }); hg.rotateX(Math.PI / 2); hg.translate(0, 1.2, 0); add(hg, M(0x2b2140), 0, 0, 0, rival);
+    box(3.6, 1.6, 3.0, M(0xc8423b), 0, 2.0, 1.2, rival); box(4.0, 0.2, 3.4, M(0xffd23c), 0, 2.9, 1.2, rival);
+    const rs = signBoard('RIVAL GRUB', 0, 3.6, 1.2, 3.4, -Math.PI / 2, rival); rs.position.x = 0; void rs;
+    signBoard('RIVAL GRUB', -1.85, 2.1, 1.2, 2.6, -Math.PI / 2, rival);
+    for (let i = 0; i < 6; i++) { const b = ball(0.12, new THREE.MeshBasicMaterial({ color: [0xff3b6b, 0xffd23c, 0x5cff8a][i % 3] }), -1.9, 3.1, -0.3 + i * 0.6, rival, 8); void b; } }
+  tickers.push((dt, t) => { if (!rival.visible) return; rival.position.y = waveAt(rival.position.x, rival.position.z, t) * 0.6; rival.rotation.z = Math.sin(t * 1.2) * 0.04; });
+  // a sea monster tentacle (an event): call makeTentacle() and put it by a table
+  function makeTentacle() {
+    const g = new THREE.Group(), segs = [];
+    const mt = M(0x9a63cc, { roughness: 0.5 }), sucker = M(0xf0c8ff);
+    for (let i = 0; i < 9; i++) { const s = new THREE.Group(); (i ? segs[i - 1] : g).add(s); s.position.y = i ? 0.32 : 0; const r = 0.26 - i * 0.022; add(new THREE.CylinderGeometry(r * 0.85, r, 0.34, 10), mt, 0, 0.17, 0, s); if (i % 2) ball(0.05, sucker, 0, 0.17, -r * 0.9, s, 6); segs.push(s); }
+    g.userData.wiggle = (t, grip) => segs.forEach((s, i) => { s.rotation.x = Math.sin(t * 3 + i * 0.6) * 0.18 + (grip ? 0.16 : 0.05); s.rotation.z = Math.cos(t * 2.4 + i * 0.5) * 0.12; });
+    return g;
+  }
+  const weather = { rock: 1, rain: false, flash: 0, roll: 0, dark: 0 };
+  // paint and theme: every trim / hull / deck material, found once the boat is built
+  let trimMats = [], hullMats = [], hullMatMain = null;
+  function findPaintMats() {
+    const seen = new Set();
+    [boat, skiff].forEach(root => root.traverse(o => { if (!o.isMesh || seen.has(o.material)) return; seen.add(o.material); const h = o.material.color && o.material.color.getHex(); if (h === 0x3bb6b0) trimMats.push(o.material); if (h === 0xfaf3e3) hullMats.push(o.material); }));
+    hullMatMain = hullMats[0];
+  }
+  // ================= the chef =================
+  const chef = group(0, FLOOR, 1.2, boat); chef.rotation.order = 'YXZ';
+  const hands = group(0, 1.15, -0.5, chef);
+  const white = M(0xffffff, { roughness: 0.6 }), skin = M(0xf2c09a, { roughness: 0.7 }), pants = M(0x2b2140), shoe = M(0x1a1426);
+  const hips = [-0.15, 0.15].map(x => { const h = group(x, 0.62, 0, chef); cyl(0.11, 0.1, 0.5, pants, 0, -0.25, 0, h, 10); box(0.18, 0.1, 0.3, shoe, 0, -0.55, -0.05, h); return h; });
+  const torso = group(0, 0, 0, chef);
+  add(new THREE.SphereGeometry(0.42, 18, 14), white, 0, 1.0, 0, torso).scale.set(1, 1.15, 0.85);
+  box(0.62, 0.5, 0.04, M(0xffd23c, { roughness: 0.8 }), 0, 0.82, -0.34, torso).rotation.x = 0.1;
+  [[-0.1, 1.15], [0.1, 1.15], [-0.1, 0.98], [0.1, 0.98]].forEach(([bx, by]) => ball(0.035, M(0x2b2140), bx, by, -0.36, torso, 8));
+  add(new THREE.TorusGeometry(0.2, 0.06, 8, 16), M(C.red), 0, 1.42, 0, torso).rotation.x = Math.PI / 2;
+  const head = group(0, 1.75, 0, torso);
+  ball(0.34, skin, 0, 0, 0, head, 20);
+  [-0.12, 0.12].forEach(x => { ball(0.05, M(0x1a1026), x, 0.05, -0.3, head, 8); ball(0.05, M(0xff9a8a, { roughness: 1 }), x * 1.6, -0.06, -0.26, head, 8).scale.set(1, 0.6, 0.4); });
+  const stache = add(new THREE.TorusGeometry(0.1, 0.035, 6, 12, Math.PI), M(0x5a3a22), 0, -0.1, -0.31, head); stache.rotation.z = Math.PI;
+  ball(0.05, skin, 0, -0.02, -0.34, head, 8);
+  const toque = group(0, 0, 0, head);
+  cyl(0.3, 0.28, 0.2, white, 0, 0.3, 0, toque, 18);
+  [[0, 0.55, 0, 0.3], [-0.18, 0.48, 0.05, 0.22], [0.18, 0.48, 0.05, 0.22], [0, 0.48, 0.18, 0.22], [0, 0.48, -0.16, 0.22]].forEach(([hx, hy, hz, r]) => ball(r, white, hx, hy, hz, toque, 14));
+  // v4.1: a striped nightcap for sleeping (swapped for the chef's hat in the wake-up scene)
+  const nightcap = group(0, 0.22, 0, head); nightcap.visible = false;
+  { const capTex = canvasTex(64, 64, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#fff3d6' : '#3b6fd9'; g.fillRect(0, i * 8, w, 8); } });
+    const cone = add(new THREE.ConeGeometry(0.3, 0.75, 16), new THREE.MeshStandardMaterial({ map: capTex, roughness: 0.9 }), 0.12, 0.3, 0.05, nightcap); cone.rotation.z = -0.7;
+    ball(0.08, M(0xffffff, { roughness: 1 }), 0.42, 0.5, 0.05, nightcap, 10); }
+  // v4.1: a little mouth that opens for yawns and shouts
+  const mouth = ball(0.06, M(0x7a2030), 0, -0.17, -0.3, head, 10); mouth.scale.set(1, 0.2, 0.5);
+  const shoulders = [-0.45, 0.45].map(x => { const s = group(x, 1.25, 0, torso); cyl(0.09, 0.08, 0.5, white, 0, -0.25, 0, s, 10); ball(0.08, skin, 0, -0.52, 0, s, 10); s.rotation.z = x > 0 ? 0.12 : -0.12; return s; });
+  // the fishing rod (only shown in the morning)
+  const rod = group(0.42, 0.95, -0.25, chef); rod.rotation.x = -0.75; rod.visible = false;
+  cyl(0.025, 0.045, 3.3, M(0x5a3a22), 0, 1.65, 0, rod, 6);
+  cyl(0.07, 0.07, 0.16, M(0x2a2a30, { metalness: 0.5 }), 0.06, 0.45, 0, rod, 10).rotation.z = Math.PI / 2;
+  const rodTip = new THREE.Object3D(); rodTip.position.set(0, 3.3, 0); rod.add(rodTip);
+  chef.traverse(o => { if (o.isMesh) o.castShadow = true; });
+
+  // ================= a fish that jumps now and then =================
+  const jumper = fishModel(0x7dffb0, 0.9); jumper.position.y = -6;
+  let jump = null, jumpWait = 3;
+
+  // ================= steam and smoke =================
+  const puffs = [];
+  for (let i = 0; i < 22; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }));
+    boat.add(m); puffs.push({ m, life: 0, src: i % 2 });
+  }
+  const puffSrc = [[-0.4, FLOOR + 1.45, KZ - 0.22, 0xffffff], [-3.5, FLOOR + 1.1, KZ, 0xb8b8b8]];
+
+  // ================= input =================
+  const keys = {};
+  addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if (e.code === 'KeyN') toggleNight();
+    if (e.code === 'KeyZ' || e.code === 'Equal' || e.code === 'NumpadAdd') stepZoom(1);
+    if (e.code === 'KeyX' || e.code === 'Minus' || e.code === 'NumpadSubtract') stepZoom(-1);
+    if (e.code.startsWith('Arrow')) e.preventDefault();
+  });
+  addEventListener('keyup', e => { keys[e.code] = false; });
+  let target = null;
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const pointers = new Map(); let pinch = null;
+  renderer.domElement.addEventListener('pointerdown', e => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: zoomT }; return; }
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    if (API.mode === 'fish') { if (API.onSeaClick) API.onSeaClick(ray); return; }
+    if (API.mode === 'build') { const h = ray.intersectObjects([deck, tiles])[0]; if (h && API.onDeckClick) API.onDeckClick(boat.worldToLocal(h.point.clone())); return; }
+    const hit = ray.intersectObjects([deck, tiles])[0];
+    if (hit) target = boat.worldToLocal(hit.point.clone());
+  });
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) { const [a, b] = [...pointers.values()]; setZoom(pinch.z * pinch.d / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y))); target = null; }
+  });
+  const endPointer = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; };
+  renderer.domElement.addEventListener('pointerup', endPointer);
+  renderer.domElement.addEventListener('pointercancel', endPointer);
+  renderer.domElement.addEventListener('wheel', e => { e.preventDefault(); setZoom(zoomT * Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+
+  // zoom: smaller = closer. Steps for the buttons and keys, any value for wheel and pinch.
+  const ZMIN = 0.35, ZMAX = 1.5, STEPS = [1.5, 1.2, 1, 0.75, 0.55, 0.35];
+  let zoomT = 1, zoom = 1;
+  try { const z = Number(localStorage.getItem('fr3d-zoom')); if (z >= ZMIN && z <= ZMAX) zoomT = zoom = z; } catch (e) { /* storage is optional */ }
+  const zoomLbl = document.getElementById('zoomLbl');
+  function setZoom(z) {
+    zoomT = Math.min(ZMAX, Math.max(ZMIN, z));
+    zoomLbl.textContent = 'Zoom ' + (1 / zoomT).toFixed(1).replace('.0', '') + 'x';
+    try { localStorage.setItem('fr3d-zoom', String(zoomT)); } catch (e) { /* storage is optional */ }
+  }
+  function stepZoom(dir) {
+    const next = dir > 0 ? STEPS.find(s => s < zoomT - 0.01) : STEPS.slice().reverse().find(s => s > zoomT + 0.01);
+    if (next) setZoom(next);
+  }
+  document.getElementById('zoomIn').addEventListener('click', () => stepZoom(1));
+  document.getElementById('zoomOut').addEventListener('click', () => stepZoom(-1));
+  setZoom(zoomT);
+
+  let night = false, mix = 0, duskT = 0, dusk = 0, mixT = null;
+  const nightBtn = document.getElementById('night');
+  function toggleNight() { night = !night; mixT = null; duskT = 0; nightBtn.textContent = night ? 'Day' : 'Night'; }
+  nightBtn.addEventListener('click', toggleNight);
+  window.FR3D_toggleNight = toggleNight;
+
+  // stay on the deck and out of furniture
+  const blocked = (x, z) => blocks.some(b => x > b[0] - 0.3 && x < b[2] + 0.3 && z > b[1] - 0.3 && z < b[3] + 0.3);
+  function onDeck(x, z) {
+    if ((x > 4.2 && x < 7.0 && z > GANG[0] + 0.15 && z < GANG[1] - 0.15) || (x >= 7.0 && x < 12.3 && z > -3.3 && z < 5.1)) return !blocked(x, z); // gangplank and dock
+    if (z > STERN - 0.7 || z < BOW + 2.5) return false;
+    const halfW = z < -6 ? HALF_W * Math.max(0.15, (z - BOW - 1) / (-6 - BOW - 1)) : HALF_W - 0.15;
+    if (Math.abs(x) > halfW - 0.3) return false;
+    return !blocks.some(b => x > b[0] - 0.3 && x < b[2] + 0.3 && z > b[1] - 0.3 && z < b[3] + 0.3);
+  }
+  // ---------- the fishing skiff: a little boat with an outboard motor, tied up beside the restaurant ----------
+  const skiff = group(); skiff.rotation.order = 'YXZ';
+  const SKIFF_HOME = new THREE.Vector3(-8.2, 0, 5.5);
+  {
+    const sh = new THREE.Shape();
+    sh.moveTo(-1.25, 3.1); sh.lineTo(1.25, 3.1); sh.lineTo(1.35, 0.2); sh.quadraticCurveTo(1.2, -2.4, 0, -3.5); sh.quadraticCurveTo(-1.2, -2.4, -1.35, 0.2); sh.lineTo(-1.25, 3.1);
+    const band = (top, depth, scale, mat) => { const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: 0.12, bevelThickness: 0.12, bevelSegments: 2, curveSegments: 16 }); g.rotateX(Math.PI / 2); g.translate(0, top, 0); g.scale(scale, 1, scale); return add(g, mat, 0, 0, 0, skiff); };
+    band(0.55, 0.35, 1, M(0xfaf3e3, { roughness: 0.5 }));
+    band(0.2, 0.12, 1.02, M(C.trim, { roughness: 0.5 }));
+    band(0.05, 0.55, 0.92, M(C.bottom, { roughness: 0.6 }));
+    const floorG = new THREE.ShapeGeometry(sh, 16); floorG.rotateX(Math.PI / 2); floorG.scale(0.86, 1, 0.86);
+    add(floorG, new THREE.MeshStandardMaterial({ map: plankTex, roughness: 0.9, side: THREE.DoubleSide }), 0, 0.3, 0, skiff, false);
+    add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(sh.getSpacedPoints(40).map(p => new THREE.Vector3(p.x * 1.03, 0.7, p.y * 1.02)), true), 60, 0.07, 6, true), M(0x8a5a34), 0, 0, 0, skiff);
+    [1.4, -0.9].forEach(z => box(2.3, 0.08, 0.45, wood, 0, 0.62, z, skiff));
+    // outboard motor
+    const motor = group(0, 0.6, 3.25, skiff);
+    box(0.55, 0.7, 0.6, M(0xc8423b, { roughness: 0.4 }), 0, 0.35, 0.15, motor);
+    box(0.6, 0.15, 0.65, M(0x2a2a30), 0, 0.75, 0.15, motor);
+    cyl(0.07, 0.07, 1.2, M(0x2a2a30), 0, -0.4, 0.25, motor, 8);
+    for (let i = 0; i < 3; i++) { const bl = box(0.06, 0.35, 0.12, M(0x8a8a90, { metalness: 0.6 }), 0, -0.95, 0.35, motor); bl.rotation.z = i * Math.PI / 1.5; }
+    // cooler, tackle box, little flag at the bow
+    box(0.9, 0.5, 0.55, M(0xffffff, { roughness: 0.4 }), -0.4, 0.55, 2.3, skiff); box(0.94, 0.08, 0.6, M(C.trim), -0.4, 0.82, 2.3, skiff);
+    box(0.45, 0.25, 0.3, M(0x3f9e5a), 0.6, 0.45, 2.3, skiff);
+    cyl(0.03, 0.03, 1.1, M(0x2a2a30), 0, 1.05, -3.1, skiff, 6);
+    add(new THREE.PlaneGeometry(0.5, 0.3), M(C.trim, { side: THREE.DoubleSide }), 0.25, 1.45, -3.1, skiff);
+    // rope from the skiff back to the restaurant
+    const ring2 = group(1.2, 0.6, 0, skiff); ring2.rotation.y = Math.PI / 2;
+    for (let i = 0; i < 4; i++) add(new THREE.TorusGeometry(0.28, 0.07, 6, 8, Math.PI / 2), M(i % 2 ? 0xffffff : 0xe8344e), 0, 0, 0, ring2).rotation.z = i * Math.PI / 2;
+  }
+  skiff.position.copy(SKIFF_HOME);
+  scene.traverse(o => { if (o.isMesh) o.castShadow = o.castShadow; });
+
+  // ---------- modes: 'fish' (morning at sea) or 'walk' (the restaurant boat) ----------
+  let mode = 'walk';
+  const walkSpot = new THREE.Vector3();
+  function setMode(m) {
+    const wasFish = mode === 'fish';
+    mode = m; API.mode = m;
+    const fish = m === 'fish';
+    rod.visible = fish;
+    boat.position.set(0, 0, 0); boat.rotation.y = 0;
+    skiff.position.copy(SKIFF_HOME); skiff.rotation.set(0, 0, 0);
+    if (fish) { walkSpot.copy(chef.position); skiff.add(chef); chef.position.set(0, 0.32, 0.25); chef.rotation.y = 0; target = null; }
+    else if (wasFish) { boat.add(chef); chef.position.copy(walkSpot.lengthSq() ? walkSpot : new THREE.Vector3(0, FLOOR, 1.2)); }
+    document.getElementById('walkHud').hidden = m !== 'walk';
+    if (fish) camPos.set(SKIFF_HOME.x, 40, 30);
+    else rod.visible = false;
+  }
+  // the kitchen fish tank shows what you caught
+  function refreshTank(colors) {
+    tankFish.splice(0).forEach(f => boat.remove(f));
+    (colors.length ? colors : [0xffd23c, 0x7dffb0]).slice(0, 6).forEach((c, i) => { const f = fishModel(c, 0.3, boat); f.position.set(-4.15, FLOOR + 1.25 + (i % 4) * 0.17, 6.3); tankFish.push(f); });
+  }
+  function setTableCount(n) {
+    tableGroups.forEach((t, i) => { const on = i < n; t.visible = on; const b = t.userData.block, h = t.userData.home; if (on) { b[0] = h[0]; b[1] = h[1]; b[2] = h[2]; b[3] = h[3]; } else { b[0] = b[2] = 999; } });
+  }
+  function setTime(name) {
+    // day | dawn | afternoon | dusk | night
+    const T = { day: [0, 0], dawn: [0.25, 0.7], afternoon: [0, 0.35], dusk: [0.45, 1], night: [1, 0] }[name] || [0, 0];
+    mixT = T[0]; duskT = T[1]; night = name === 'night'; nightBtn.textContent = night ? 'Day' : 'Night';
+  }
+  const API = window.FR3D = { hands, tableGroups, setTableCount, setTime, setOpenSign, addSolid: solid, KEND, WALL_Z, CABIN_END, SKIFF_HOME, chefPath: null, onArrive: null, cam: null, inputLocked: false, dock, plank, setTarget: v => { target = v; }, chef, boat, skiff, scene, camera, rod, rodTip, shoulders, keys, waveAt, fishModel, setMode, refreshTank, mode, FLOOR, toggleNight: () => { if (night) toggleNight(); }, sea, foam, update: null, onSeaClick: null,
+    // v4.1
+    parts: { torso, head, hips, shoulders, mouth, toque, nightcap }, weather, makeTentacle, rival, tickers, rodStand, barSec, sushiSec, setLook: null, setSections: null, setWaters: null, alarm, desk, book, roofMat, lamps, bulbs, candles, glows, act: null, pose: null, sunDisc, deck, tiles, blocks, onDeck, chair, plant, crate, barrel, canvasTex, M, glowTex, signBoard, trophy, setRoof: null };
+  // v4.1: decor, paint, theme, name, sections and which waters you are in
+  findPaintMats();
+  const clothTopTex = clothTopMat.map, clothSideMap = clothSideMat.map;
+  API.setLook = st => {
+    ['lanterns', 'plants', 'stringlights', 'rugs', 'flags', 'sign', 'aquarium'].forEach(k => (decorSets[k] || []).forEach(o => { o.visible = !!(st.decor && st.decor[k]); }));
+    decorSets.plants.forEach(g => { const b = g.userData.block, h = g.userData.home; if (g.visible) { b[0] = h[0]; b[1] = h[1]; b[2] = h[2]; b[3] = h[3]; } else b[0] = b[2] = 999; });
+    if (st.decor && st.decor.aquarium) { aqBlock[0] = aqHome[0]; aqBlock[2] = aqHome[2]; } else aqBlock[0] = aqBlock[2] = 999;
+    const checked = !!(st.decor && st.decor.tablestyle);
+    clothTopMat.map = checked ? clothTopTex : null; clothSideMat.map = checked ? clothSideMap : null; clothTopMat.needsUpdate = clothSideMat.needsUpdate = true;
+    const pirate = st.theme === 'pirate';
+    trimMats.forEach(m => m.color.setHex(FR.trimColor()));
+    hullMats.forEach(m => m.color.setHex(pirate ? 0x6a4a2e : 0xfaf3e3));
+    deck.material.color.setHex(pirate ? 0x8a6a4a : 0xffffff);
+    drawName(st.name || 'Floating Restaurant', pirate ? '#ffd23c' : '#ffe9a8');
+  };
+  API.setSections = sec => {
+    [[barSec, 'bar'], [sushiSec, 'sushi']].forEach(([g, k]) => { const on = !!(sec && sec[k]), b = g.userData.block, h = g.userData.home; g.visible = on; if (on) { b[0] = h[0]; b[1] = h[1]; b[2] = h[2]; b[3] = h[3]; } else b[0] = b[2] = 999; });
+  };
+  API.setWaters = id => {
+    const a = FR.DATA.areas[id] || FR.DATA.areas.home;
+    DAY.sky = id === 'home' ? 0x9ad8ff : a.sky; DAY.water = id === 'home' ? 0x2a8fc0 : a.water; reefs.visible = id === 'coral';
+  };
+  scene.traverse(o => { if (o.isMesh && o.castShadow) { o.geometry.computeBoundingSphere(); if (o.geometry.boundingSphere.radius * Math.max(o.scale.x, o.scale.y, o.scale.z) < 0.3) o.castShadow = false; } });
+  const moving = new Set([aquarium, barSec, sushiSec, rodStand, arch, bunting, chef, ...tankFish, ...puffs.map(p => p.m), ...candles.map(c => c.flame), deskFlame, flag, plank, alarm, desk]);
+  const freeze = o => { if (moving.has(o)) return; o.updateMatrix(); o.matrixAutoUpdate = false; o.children.forEach(freeze); };
+  boat.children.forEach(freeze); dock.children.forEach(freeze);
+
+  // auto quality: if the frame rate stays low, drop resolution, then shadows
+  const perf = { frames: 0, time: 0, step: 0 };
+  function checkPerf(dt) {
+    perf.frames++; perf.time += dt;
+    if (perf.time < 2) return;
+    const fps = perf.frames / perf.time; perf.frames = 0; perf.time = 0;
+    if (fps >= 40 || perf.step >= 2) return;
+    perf.step++;
+    if (perf.step === 1 && pixelRatio > 1) { pixelRatio = 1; renderer.setPixelRatio(1); resize(); }
+    else { sun.castShadow = false; perf.step = 2; }
+  }
+
+  // ================= loop =================
+  const roomEl = document.getElementById('room');
+  const cLerp = (a, b, k) => new THREE.Color(a).lerp(new THREE.Color(b), k);
+  const camPos = new THREE.Vector3(0, 20, 12), look = new THREE.Vector3();
+  let last = performance.now(), t = 0, walkT = 0, normalT = 0, walkW = 0, actT = 0, react = null;
+  API.react = (kind, dur) => { react = { kind, t: 0, dur: dur || 0.9 }; };
+  API.sunRise = k => { if (k === null) { sunDisc.visible = false; return; } sunDisc.visible = true; sunDisc.position.set(60, -14 + k * 40, -170); };
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000) * ((window.FR3D && window.FR3D.timeScale) || 1); last = now; t += dt;
+
+    // waves
+    seaTime.value = t;
+
+    // boat rides the swell; the dock and plank ride with it a little less
+    const rock = (reduce ? 0.3 : 1) * weather.rock;
+    const bx = boat.position.x, bz = boat.position.z;
+    boat.position.y = waveAt(bx, bz, t) * 0.5;
+    boat.rotation.z = (waveAt(bx + 3, bz, t) - waveAt(bx - 3, bz, t)) * 0.04 * rock;
+    boat.rotation.x = (waveAt(bx, bz - 6, t) - waveAt(bx, bz + 6, t)) * 0.025 * rock;
+    // the skiff bobs too
+    const sx = skiff.position.x, sz = skiff.position.z, sh = skiff.rotation.y;
+    skiff.position.y = waveAt(sx, sz, t) * 0.6;
+    skiff.rotation.x = (waveAt(sx - Math.sin(sh) * 2, sz - Math.cos(sh) * 2, t) - waveAt(sx + Math.sin(sh) * 2, sz + Math.cos(sh) * 2, t)) * 0.12 * rock;
+    skiff.rotation.z = (waveAt(sx + Math.cos(sh), sz - Math.sin(sh), t) - waveAt(sx - Math.cos(sh), sz + Math.sin(sh), t)) * 0.15 * rock;
+    const fishing = API.mode === 'fish', fx = fishing ? sx : bx, fz = fishing ? sz : bz;
+    sea.position.set(Math.round(fx / 3.25) * 3.25, 0, Math.round(fz / 3.25) * 3.25);
+    foam.position.x = bx + Math.sin(boat.rotation.y) * 1.05; foam.position.z = bz + Math.cos(boat.rotation.y) * 1.05; foam.rotation.z = boat.rotation.y;
+    plank.position.y = FLOOR - 0.15 + boat.position.y * 0.5;
+    foam.position.y = waveAt(bx, bz, t) * 0.5 + 0.1; foam.scale.set(6.2 + Math.sin(t * 2) * 0.08, 15.8 + Math.sin(t * 2) * 0.1, 1);
+
+    // day / night blend
+    mix += ((mixT !== null ? mixT : night ? 1 : 0) - mix) * Math.min(1, dt * 1.2);
+    dusk += (duskT - dusk) * Math.min(1, dt * 1.2);
+    const sky = cLerp(DAY.sky, NIGHT.sky, mix).lerp(new THREE.Color(0xff9a6a), dusk * 0.55).lerp(new THREE.Color(0x141a26), weather.dark);
+    weather.flash = Math.max(0, weather.flash - dt * 3);
+    scene.background = sky; scene.fog.color.copy(sky);
+    hemi.intensity = DAY.hemi + (NIGHT.hemi - DAY.hemi) * mix + weather.flash * 2.2;
+    sun.intensity = DAY.sun + (NIGHT.sun - DAY.sun) * mix;
+    sun.color.copy(cLerp(0xfff0d6, 0x8fa8ff, mix).lerp(new THREE.Color(0xffa060), dusk * 0.6));
+    seaMat.color.copy(cLerp(DAY.water, NIGHT.water, mix));
+    starMat.opacity = mix; moonMat.opacity = mix;
+    lamps.forEach((l, i) => { l.light.intensity = NIGHT.lamps * mix * (0.92 + Math.sin(t * 3 + i) * 0.08); l.glass.material.emissiveIntensity = 0.15 + mix * 1.6; });
+    candles.forEach((c, i) => { const f = 0.85 + Math.sin(t * 9 + i * 2) * 0.1 + Math.sin(t * 23 + i) * 0.05; c.cl.intensity = mix * 0.9 * f; c.flame.scale.y = f; });
+    bulbs.forEach((b, i) => { b.material.emissiveIntensity = 0.15 + mix * (1.3 + Math.sin(t * 2 + i) * 0.3); });
+    portholes.forEach(p => { p.material.emissiveIntensity = mix * 0.9; });
+    hostLampMat.emissiveIntensity = 0.3 + mix * 1.4; dockLampMat.emissiveIntensity = 0.15 + mix * 1.6;
+    dockLight.intensity = mix * 1.6; kLight.intensity = mix * 1.2; diningLight.intensity = mix * 2.4; glows.forEach((g, i) => { g.material.opacity = mix * (0.75 + Math.sin(t * 4 + i) * 0.08); }); cabLight.intensity = mix * 1.1; bedLight.intensity = mix * 0.8; bedLampMat.emissiveIntensity = 0.1 + mix * 1.5;
+    coals.material.emissiveIntensity = 0.8 + Math.sin(t * 6) * 0.25;
+    burners.forEach((b, i) => { b.material.emissiveIntensity = 0.45 + Math.sin(t * 5 + i) * 0.15; });
+
+    // flag ripple
+    const fp = flag.geometry.attributes.position;
+    for (let i = 0; i < fp.count; i++) { const x = flagBase[i * 3]; fp.array[i * 3 + 2] = Math.sin(x * 4 - t * 6) * 0.08 * (x + 0.55); }
+    fp.needsUpdate = true;
+
+    // steam from the pot, smoke from the grill
+    puffs.forEach((p, i) => {
+      if (p.life <= 0) { if (Math.random() < dt * 3) { const s = puffSrc[p.src]; p.m.position.set(s[0] + rnd(-0.2, 0.2), s[1], s[2] + rnd(-0.15, 0.15)); p.m.material.color.setHex(s[3]); p.life = 1; } else return; }
+      p.life -= dt * 0.6; p.m.position.y += dt * 0.7; p.m.position.x += Math.sin(t * 2 + i) * dt * 0.1;
+      p.m.scale.setScalar(1 + (1 - p.life) * 2.5); p.m.material.opacity = Math.max(0, p.life) * 0.45;
+    });
+
+    if (API.mode === 'fish' && API.update) API.update(dt, t);
+    // chef movement (walk mode only)
+    if (API.mode === 'night' && API.nightUpdate) API.nightUpdate(dt, t);
+    if (API.cutUpdate) API.cutUpdate(dt, t);
+    const walkMode = API.mode === 'walk' || API.mode === 'night';
+    let mx = !walkMode || API.inputLocked ? 0 : (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+    let mz = !walkMode || API.inputLocked ? 0 : (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
+    if (!walkMode) target = null;
+    let auto = false;
+    if (API.chefPath && API.chefPath.length && API.mode !== 'fish') {
+      const pt = API.chefPath[0], dx = pt.x - chef.position.x, dz = pt.z - chef.position.z, d = Math.hypot(dx, dz);
+      if (d < 0.12) { API.chefPath.shift(); if (!API.chefPath.length && API.onArrive) { const f = API.onArrive; API.onArrive = null; f(); } }
+      else { mx = dx / d; mz = dz / d; auto = true; }
+    }
+    if (auto) target = null;
+    else if (mx || mz) target = null;
+    else if (target) { const dx = target.x - chef.position.x, dz = target.z - chef.position.z, d = Math.hypot(dx, dz); if (d < 0.15) target = null; else { mx = dx / d; mz = dz / d; } }
+    const len = Math.hypot(mx, mz), speed = 5.6;
+    if (len > 0) {
+      const sp2 = auto ? 3.4 : speed, vx = mx / len * sp2 * dt, vz = mz / len * sp2 * dt, p = chef.position;
+      if (auto) { const pt = API.chefPath[0], d = Math.hypot(pt.x - p.x, pt.z - p.z), k = Math.min(1, d / Math.max(1e-6, Math.hypot(vx, vz))); p.x += vx * k; p.z += vz * k; }
+      else {
+        // if the chef is ever standing inside something, let him walk out of it
+        const stuck = !onDeck(p.x, p.z);
+        const moved = [[vx, vz], [vx, 0], [0, vz]].some(([ax, az]) => { if (onDeck(p.x + ax, p.z + az) || (stuck && Math.abs(p.x + ax) < HALF_W && p.z + az < STERN - 0.7 && p.z + az > BOW + 2.5)) { p.x += ax; p.z += az; return true; } return false; });
+        if (!moved) target = null;
+      }
+      const face = Math.atan2(-mx, -mz);
+      let diff = face - chef.rotation.y; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      chef.rotation.y += diff * Math.min(1, dt * 12);
+      walkT += dt * 10;
+    } else walkT *= 0.8;
+    // v4.1: smoother walk (blends in and out), a lean and sway, idle breathing, and action poses
+    const walking = len > 0;
+    walkW += ((walking ? 1 : 0) - walkW) * Math.min(1, dt * 10);
+    const sw = Math.sin(walkT) * 0.65 * walkW;
+    hips[0].rotation.x = sw; hips[1].rotation.x = -sw;
+    shoulders[0].rotation.set(0, 0, -0.12); if (API.mode !== 'fish') shoulders[1].rotation.set(0, 0, 0.12);
+    if (hands.children.length) { shoulders[0].rotation.x = shoulders[1].rotation.x = 1.2 + Math.sin(walkT) * 0.06 * walkW; } else { shoulders[0].rotation.x = -sw * 0.9; if (API.mode !== 'fish') shoulders[1].rotation.x = sw * 0.9; }
+    torso.position.y = Math.abs(Math.sin(walkT)) * 0.07 * walkW + Math.sin(t * 2) * 0.014;
+    torso.rotation.set(-0.1 * walkW, 0, Math.sin(walkT) * 0.05 * walkW);
+    head.rotation.set(0, 0, walkW > 0.5 ? Math.sin(walkT) * 0.05 : Math.sin(t * 0.7) * 0.04);
+    mouth.scale.set(1, 0.2, 0.5);
+    // what the chef is doing with his hands right now (set by the night service while you HOLD)
+    if (API.act && !hands.children.length) {
+      actT += dt;
+      const a = API.act;
+      if (a === 'chop') { shoulders[1].rotation.x = 1.0 + Math.abs(Math.sin(actT * 16)) * 0.9; shoulders[0].rotation.x = 1.1; torso.rotation.x = 0.12; }
+      else if (a === 'wash') { shoulders[0].rotation.x = 1.2 + Math.sin(actT * 12) * 0.3; shoulders[1].rotation.x = 1.2 + Math.cos(actT * 12) * 0.3; shoulders[0].rotation.z = -0.3 + Math.cos(actT * 12) * 0.2; shoulders[1].rotation.z = 0.3 + Math.sin(actT * 12) * 0.2; torso.rotation.x = 0.15; }
+      else if (a === 'stir') { shoulders[1].rotation.x = 1.3 + Math.sin(actT * 7) * 0.25; shoulders[1].rotation.z = 0.3 + Math.cos(actT * 7) * 0.3; torso.rotation.x = 0.08; }
+      else if (a === 'fight') { shoulders[0].rotation.x = 1.5 + Math.sin(actT * 20) * 0.6; shoulders[1].rotation.x = 1.5 - Math.sin(actT * 20) * 0.6; torso.rotation.z = Math.sin(actT * 10) * 0.12; }
+    } else actT = 0;
+    // a quick reaction: 'yay' (jump, arms up), 'sad' (slump), 'jerk' (yank the rod)
+    if (react) {
+      react.t += dt; const k = react.t / react.dur;
+      if (react.kind === 'yay') { torso.position.y += Math.sin(Math.min(1, k * 2) * Math.PI) * 0.45; shoulders[0].rotation.x = -2.8; shoulders[0].rotation.z = -0.5; if (API.mode !== 'fish') { shoulders[1].rotation.x = -2.8; shoulders[1].rotation.z = 0.5; } mouth.scale.set(1.3, 1, 0.6); }
+      else if (react.kind === 'sad') { torso.rotation.x = 0.35; head.rotation.x = 0.4; shoulders[0].rotation.x = 0.2; mouth.scale.set(1, 0.4, 0.5); }
+      else if (react.kind === 'jerk') { torso.rotation.x = -0.3 * Math.sin(Math.min(1, k) * Math.PI); }
+      if (k >= 1) react = null;
+    }
+    if (API.pose) API.pose(dt, t, { torso, head, hips, shoulders, mouth });
+    const inCabin = chef.parent === boat && chef.position.z > KEND;
+    roomEl.textContent = inCabin ? 'Bedroom' : chef.position.z > WALL_Z ? 'Kitchen' : 'Dining room';
+    const inBackKitchen = chef.parent === boat && chef.position.z > 5.5 && !inCabin;
+    roofMat.opacity += ((API.roofForce != null ? API.roofForce : inCabin ? 0.08 : inBackKitchen ? 0.3 : 1) - roofMat.opacity) * Math.min(1, dt * 5);
+    roofMat.depthWrite = roofMat.opacity > 0.9; chimney.visible = roofMat.opacity > 0.5;
+    backMat.opacity = backInMat.opacity = Math.max(0.12, roofMat.opacity); backMat.depthWrite = backInMat.depthWrite = roofMat.opacity > 0.9;
+    deskFlame.scale.y = 0.85 + Math.sin(t * 11) * 0.15;
+    // the dock sits lower than the deck
+    if (chef.parent === boat && (API.mode === 'walk' || API.mode === 'night') && chef.position.x > 4.4) { const dy = 1.225 - boat.position.y; chef.position.y = chef.position.x > 7 ? dy : FLOOR + (dy - FLOOR) * (chef.position.x - 4.4) / 2.6; }
+    else if (chef.parent === boat && (API.mode === 'walk' || API.mode === 'night') && chef.position.y !== FLOOR && !API.pose) chef.position.y = FLOOR;
+    tickers.forEach(f => f(dt, t));
+    rain.visible = weather.rain;
+    if (weather.rain) { const rp = rain.geometry.attributes.position; for (let i = 0; i < rainN; i++) { rp.array[i * 3 + 1] -= dt * 22; if (rp.array[i * 3 + 1] < 0) rp.array[i * 3 + 1] += 25; } rp.needsUpdate = true; rain.position.set(look.x, 0, look.z); }
+
+    // tank fish swim back and forth
+    tankFish.forEach((f, i) => { const k = t * (0.5 + i * 0.15) + i * 1.7; f.position.z = 6.3 + Math.sin(k) * 0.75; f.rotation.y = Math.cos(k) > 0 ? -Math.PI / 2 : Math.PI / 2; f.position.y = FLOOR + 1.3 + i * 0.18 + Math.sin(k * 2) * 0.04; });
+
+    // clouds drift, gulls circle
+    clouds.forEach((c, i) => { c.visible = !fishing; c.position.x += dt * (1.2 + i * 0.1); if (c.position.x > 140) c.position.x = -140; });
+    gulls.forEach(gl => { const a = t * gl.sp + gl.ph; gl.g.position.set(fx + Math.cos(a) * gl.r, gl.g.position.y + (fishing ? 0 : 0), fz + Math.sin(a) * gl.r - 4); gl.g.rotation.y = -a; const f = Math.sin(t * 8 + gl.ph) * 0.5; gl.wings[0].rotation.z = f; gl.wings[1].rotation.z = -f; });
+
+    // a jumping fish off the side
+    if (!jump && (jumpWait -= dt) <= 0) jump = { t: 0, x: fx + (fishing && Math.random() < 0.5 ? 1 : -1) * (10 + Math.random() * 7), z: fz - 12 + Math.random() * 20, dir: Math.random() < 0.5 ? -1 : 1 };
+    if (jump) {
+      jump.t += dt; const k = jump.t / 1.2;
+      jumper.position.set(jump.x + jump.dir * k * 3, waveAt(jump.x, jump.z, t) + Math.sin(k * Math.PI) * 2.6 - 0.3, jump.z);
+      jumper.rotation.set(0, jump.dir > 0 ? 0 : Math.PI, (0.5 - k) * 2.2);
+      if (k >= 1) { jump = null; jumpWait = 4 + Math.random() * 5; jumper.position.y = -6; }
+    }
+
+    // camera: angled top-down, follows the chef
+    zoom += (zoomT - zoom) * Math.min(1, dt * 6);
+    const wp = fishing ? new THREE.Vector3(sx - Math.sin(sh) * 3, 0.5, sz - Math.cos(sh) * 3) : chef.getWorldPosition(new THREE.Vector3());
+    const want = fishing ? new THREE.Vector3(wp.x, 30 * zoom + 5, wp.z + 20 * zoom) : new THREE.Vector3(wp.x, wp.y + 18 * zoom, wp.z + 9 * zoom);
+    if (API.cam) { want.copy(API.cam.pos); wp.copy(API.cam.look); }
+    const cs = API.cam && API.cam.speed ? API.cam.speed : 1;
+    if (API.cam && API.cam.snap) { API.cam.snap = false; camPos.copy(want); look.copy(wp); }
+    camPos.lerp(want, Math.min(1, dt * (API.cam ? 1.6 * cs : 3))); look.lerp(wp, Math.min(1, dt * (API.cam ? 2 * cs : 4)));
+    camera.position.copy(camPos); camera.lookAt(look.x, look.y + 0.8 * (1 - zoom) , look.z);
+    if (weather.roll) camera.rotateZ(weather.roll);
+    sun.position.set(wp.x + 18, 34, wp.z + 12); sun.target.position.copy(wp);
+
+    checkPerf(dt);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+<script src="js/dishart.js"></script>
+<script src="js/fishing3d.js"></script>
+<script src="js/service3d.js"></script>
+<script src="js/prep3d.js"></script>
+<script src="js/day3d.js"></script>
