@@ -3,61 +3,99 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@500;600&display=swap">
 <style>
-  /* One full-screen toon scene; a small chunky card top-left, two buttons. Single look by choice (it is a game screen). */
+  /* Full-screen game screen. Cash + day top-left, order tickets top-right, SERVE button bottom-centre, look toggles bottom-left. Single look by choice. */
   :root {
-    --ink: #1d1430; --cream: #fff6e0; --sun: #ffd23c; --coral: #ff5d5d; --mint: #3fd08a;
-    --sky-top: #49b8ff; --sky-bot: #bdf0ff;
+    --ink: #1d1430; --cream: #fff6e0; --paper: #fffdf4; --gold: #ffd23c; --coral: #ff5d5d; --mint: #3fd08a; --sky: #49b8ff; --orange: #ff9a3c;
+    --sky-top: #3fb0ff; --sky-bot: #c4f2ff;
     --display: "Lilita One", "Trebuchet MS", sans-serif; --body: "Fredoka", "Trebuchet MS", Verdana, sans-serif;
     color-scheme: light; height: 100%;
   }
   html, body { height: 100%; }
-  body { margin: 0; overflow: hidden; font-family: var(--body); color: var(--ink); background: linear-gradient(var(--sky-top), var(--sky-bot) 60%); transition: background 0.8s; }
-  body.sunset { --sky-top: #6a4bd8; --sky-bot: #ffb36b; }
+  body { margin: 0; overflow: hidden; font-family: var(--body); color: var(--ink); background: linear-gradient(var(--sky-top), var(--sky-bot) 60%); transition: background 0.8s; user-select: none; -webkit-user-select: none; }
+  body.sunset { --sky-top: #5a3fd0; --sky-bot: #ffae6b; }
   #view { position: fixed; inset: 0; }
   canvas { display: block; touch-action: none; }
-  .card {
-    position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px));
-    background: var(--cream); border: 4px solid var(--ink); border-radius: 18px; padding: 10px 14px; box-shadow: 0 5px 0 var(--ink);
-    display: grid; gap: 6px; max-width: min(300px, calc(100vw - 32px));
-  }
-  .card h1 { margin: 0; font: 400 24px/1 var(--display); color: var(--coral); -webkit-text-stroke: 1px var(--ink); text-wrap: balance; }
-  .card p { margin: 0; font-size: 13px; line-height: 1.35; font-weight: 500; }
-  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
-  button {
-    font: 400 16px var(--display); color: var(--cream); background: var(--mint); border: 3px solid var(--ink); border-radius: 12px;
-    padding: 6px 12px; min-height: 40px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); -webkit-text-stroke: 0.6px var(--ink);
-  }
-  button.alt { background: #ff9a3c; }
-  button:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
-  button:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
-  .hint { font-size: 12px; opacity: 0.75; }
-  #pops { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
-  .pop {
-    position: absolute; transform: translate(-50%, -50%); font: 400 30px var(--display); color: var(--sun);
-    -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 0 3px 0 var(--ink); animation: rise 1.3s ease-out forwards;
-  }
+  .stroke { -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; }
+
+  /* top-left: cash and day, chunky pills */
+  #top { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill { display: flex; align-items: center; gap: 8px; background: var(--ink); border-radius: 999px; padding: 4px 16px 4px 4px; box-shadow: 0 4px 0 rgba(0,0,0,0.25); }
+  .pill b { font: 400 26px/1 var(--display); color: var(--gold); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; font-variant-numeric: tabular-nums; }
+  .pill.day b { color: var(--cream); font-size: 20px; }
+  .coin { width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3a0, var(--gold) 45%, #e0a000); border: 3px solid var(--ink); display: grid; place-items: center; font: 400 18px var(--display); color: #b07800; }
+  .coin.bump { animation: bump 0.25s; }
+  @keyframes bump { 50% { transform: scale(1.35); } }
+  .star { width: 30px; height: 30px; display: grid; place-items: center; font-size: 22px; color: var(--gold); -webkit-text-stroke: 1.5px var(--ink); }
+
+  /* top-right: Flipline-style order tickets on a rail */
+  #rail { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); display: flex; gap: 6px; align-items: flex-start; }
+  .tk { width: 74px; background: var(--paper); border: 3px solid var(--ink); border-radius: 6px 6px 12px 12px; padding: 6px 4px 6px; display: grid; justify-items: center; gap: 2px; box-shadow: 0 4px 0 rgba(0,0,0,0.2); transform-origin: top center; transition: transform 0.2s; position: relative; }
+  .tk::before { content: ""; position: absolute; top: -9px; width: 12px; height: 12px; border-radius: 50%; background: var(--coral); border: 3px solid var(--ink); }
+  .tk img { width: 48px; height: 48px; }
+  .tk span { font: 600 11px var(--body); text-align: center; line-height: 1.1; }
+  .tk .who { font: 400 13px var(--display); color: var(--coral); }
+  .tk.urgent { transform: rotate(-4deg) scale(1.06); background: #ffe3e3; }
+  .tk.new { animation: drop 0.35s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes drop { from { transform: translateY(-40px) rotate(8deg); opacity: 0; } }
+
+  /* bubbles over guests */
+  #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .bub { position: absolute; transform: translate(-50%, -100%); display: grid; justify-items: center; gap: 3px; }
+  .bub .think { background: var(--paper); border: 3px solid var(--ink); border-radius: 50%; width: 44px; height: 44px; display: grid; place-items: center; }
+  .bub .think img { width: 34px; height: 34px; }
+  .bub .bar { width: 52px; height: 10px; background: var(--ink); border-radius: 6px; padding: 2px; box-sizing: border-box; }
+  .bub .bar i { display: block; height: 100%; border-radius: 4px; }
+  .pop { position: absolute; transform: translate(-50%, -50%); font: 400 32px var(--display); color: var(--gold); -webkit-text-stroke: 2.5px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); animation: rise 1.3s ease-out forwards; white-space: nowrap; }
+  .pop.big { font-size: 46px; color: var(--cream); }
+  .pop.mad { color: var(--coral); font-size: 28px; }
   .pop.heart { color: #ff6f91; font-size: 26px; }
-  @keyframes rise { 0% { transform: translate(-50%, -20%) scale(0.4); opacity: 0; } 15% { transform: translate(-50%, -60%) scale(1.25); opacity: 1; } 30% { transform: translate(-50%, -70%) scale(1); } 100% { transform: translate(-50%, -190%) scale(1); opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .pop { animation-duration: 0.01s; } }
+  @keyframes rise { 0% { transform: translate(-50%, -20%) scale(0.3); opacity: 0; } 15% { transform: translate(-50%, -60%) scale(1.3); opacity: 1; } 30% { transform: translate(-50%, -70%) scale(1); } 100% { transform: translate(-50%, -200%) scale(1); opacity: 0; } }
+
+  /* buttons */
+  button { font: 400 17px var(--display); color: var(--cream); background: var(--mint); border: 3px solid var(--ink); border-radius: 14px; padding: 6px 12px; min-height: 42px; cursor: pointer; box-shadow: 0 5px 0 var(--ink); -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; }
+  button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  #serve { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); font-size: 30px; padding: 8px 34px; min-height: 64px; border-radius: 22px; background: var(--orange); box-shadow: 0 7px 0 var(--ink); -webkit-text-stroke: 2px var(--ink); }
+  #serve:active { transform: translate(-50%, 5px); box-shadow: 0 2px 0 var(--ink); }
+  #serve small { display: block; font: 600 12px var(--body); -webkit-text-stroke: 0; color: var(--ink); }
+  #side { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; max-width: 220px; }
+  #side .note { background: var(--cream); border: 3px solid var(--ink); border-radius: 12px; padding: 6px 10px; font-size: 12px; font-weight: 500; line-height: 1.3; }
+  #side .note b { font: 400 15px var(--display); color: var(--coral); display: block; }
+  #side .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  #side button { font-size: 14px; min-height: 36px; padding: 4px 10px; }
+  #side button.alt { background: var(--sky); }
+  @media (max-width: 720px) {
+    #rail { top: calc(60px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); justify-content: flex-start; gap: 4px; }
+    .tk { width: 56px; padding: 4px 2px; } .tk img { width: 30px; height: 30px; } .tk span:last-child { display: none; }
+    #side .note { display: none; }
+    #side { bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .pop, .tk.new, .coin.bump { animation-duration: 0.01s; } }
 </style>
 
 <div id="view"></div>
-<div id="pops"></div>
-<div class="card">
-  <h1>Look test: chunky toon</h1>
-  <p>Rounded shapes, flat color bands, thick dark outlines and a cartoon sea. Only the look changed, not the game.</p>
-  <div class="btns">
+<div id="labels"></div>
+<div id="top">
+  <div class="pill"><span class="coin">$</span><b id="cash">$120</b></div>
+  <div class="pill day"><span class="star">★</span><b>Day 4 · Dinner</b></div>
+</div>
+<div id="rail" aria-label="Orders"></div>
+<button id="serve" type="button">SERVE!<small>serves the most impatient guest</small></button>
+<div id="side">
+  <div class="note"><b>Look test 2</b>Low-poly models, big cartoon faces, tickets and coin pops. Drag to turn, scroll or pinch to zoom.</div>
+  <div class="row">
     <button id="tOutline" type="button">Outlines: on</button>
     <button id="tTime" type="button" class="alt">Sunset</button>
   </div>
-  <p class="hint">Drag to turn · scroll or pinch to zoom</p>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script>
 (function () {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const view = document.getElementById('view');
+  const $ = id => document.getElementById(id);
+  const view = $('view');
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -66,339 +104,442 @@
   const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 600);
   function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
   addEventListener('resize', resize); resize();
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pick = a => a[Math.floor(Math.random() * a.length)];
 
-  // ---------- toon kit ----------
-  // three flat tones, like a cartoon: shadow, mid, lit
-  const ramp = new THREE.DataTexture(new Uint8Array([90, 90, 90, 175, 175, 175, 255, 255, 255]), 3, 1, THREE.RGBFormat);
+  // ================= low-poly toon kit =================
+  // Faceted (flat-shaded) shapes, three flat tones of light, and a thick ink outline.
+  const ramp = new THREE.DataTexture(new Uint8Array([105, 105, 105, 185, 185, 185, 255, 255, 255]), 3, 1, THREE.RGBFormat);
   ramp.minFilter = ramp.magFilter = THREE.NearestFilter; ramp.needsUpdate = true;
   const mats = {};
-  const T = (color, emissive) => { const k = color + ':' + (emissive || 0); return mats[k] || (mats[k] = new THREE.MeshToonMaterial({ color, gradientMap: ramp, emissive: emissive || 0 })); };
-  const OUTLINE = 0x1d1430;
+  const T = (color, o) => { o = o || {}; const k = color + JSON.stringify(o); return mats[k] || (mats[k] = new THREE.MeshToonMaterial(Object.assign({ color, gradientMap: ramp, flatShading: true }, o))); };
+  const INK = 0x1d1430;
   const outlineMat = new THREE.ShaderMaterial({
-    uniforms: { w: { value: 0.085 }, c: { value: new THREE.Color(OUTLINE) } }, side: THREE.BackSide,
+    uniforms: { w: { value: 0.07 }, c: { value: new THREE.Color(INK) } }, side: THREE.BackSide,
     vertexShader: 'uniform float w; void main(){ vec4 mv = modelViewMatrix * vec4(position + normalize(normal) * w, 1.0); gl_Position = projectionMatrix * mv; }',
     fragmentShader: 'uniform vec3 c; void main(){ gl_FragColor = vec4(c, 1.0); }'
   });
+  // The outline needs smooth normals or it splits at every facet: weld the corners, then average.
+  function shell(geo) {
+    if (geo.userData.shell) return geo.userData.shell;
+    let g = geo.clone(); for (const k in g.attributes) if (k !== 'position') g.deleteAttribute(k);
+    g = THREE.BufferGeometryUtils.mergeVertices(g, 1e-3); g.computeVertexNormals();
+    return (geo.userData.shell = g);
+  }
   const outlines = [];
-  // mk: a toon mesh with a dark outline shell
   function mk(geo, color, x, y, z, parent, o) {
     o = o || {};
-    const m = new THREE.Mesh(geo, o.mat || T(color, o.emissive));
+    const m = new THREE.Mesh(geo, o.mat || T(color, o.m));
     m.position.set(x || 0, y || 0, z || 0); m.castShadow = o.shadow !== false; m.receiveShadow = true;
     (parent || scene).add(m);
-    if (o.outline !== false) { const s = new THREE.Mesh(geo, outlineMat); s.castShadow = false; m.add(s); outlines.push(s); }
+    if (o.outline !== false) { const s = new THREE.Mesh(shell(geo), outlineMat); s.castShadow = false; m.add(s); outlines.push(s); }
     return m;
   }
   const grp = (x, y, z, p) => { const g = new THREE.Group(); g.position.set(x || 0, y || 0, z || 0); (p || scene).add(g); return g; };
-  const sph = (r, s) => new THREE.SphereGeometry(r, s || 24, Math.round((s || 24) * 0.7));
-  const cyl = (a, b, h, s) => new THREE.CylinderGeometry(a, b, h, s || 24);
-  function rbox(w, h, d, r) {
-    // a box with soft, rounded edges (so the outline stays unbroken)
-    const iw = w - 2 * r, ih = d - 2 * r, s = new THREE.Shape(), c = Math.min(iw, ih) * 0.25;
-    s.moveTo(-iw / 2 + c, -ih / 2); s.lineTo(iw / 2 - c, -ih / 2); s.quadraticCurveTo(iw / 2, -ih / 2, iw / 2, -ih / 2 + c);
-    s.lineTo(iw / 2, ih / 2 - c); s.quadraticCurveTo(iw / 2, ih / 2, iw / 2 - c, ih / 2); s.lineTo(-iw / 2 + c, ih / 2);
-    s.quadraticCurveTo(-iw / 2, ih / 2, -iw / 2, ih / 2 - c); s.lineTo(-iw / 2, -ih / 2 + c); s.quadraticCurveTo(-iw / 2, -ih / 2, -iw / 2 + c, -ih / 2);
-    const g = new THREE.ExtrudeGeometry(s, { depth: Math.max(0.001, h - 2 * r), bevelEnabled: true, bevelSize: r, bevelThickness: r, bevelSegments: 4, curveSegments: 8 });
-    g.rotateX(-Math.PI / 2); g.translate(0, -(h - 2 * r) / 2, 0); g.computeVertexNormals(); return g;
-  }
+  // low segment counts are the whole low-poly look
+  const geoCache = {};
+  const G = (k, f) => geoCache[k] || (geoCache[k] = f());
+  const sph = (r, w, h) => G(`s${r},${w},${h}`, () => new THREE.SphereGeometry(r, w || 8, h || 6));
+  const ico = (r, d) => G(`i${r},${d}`, () => new THREE.IcosahedronGeometry(r, d || 0));
+  const cyl = (a, b, h, s) => G(`c${a},${b},${h},${s}`, () => new THREE.CylinderGeometry(a, b, h, s || 8));
+  const box = (w, h, d) => G(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
+  const cone = (r, h, s) => G(`k${r},${h},${s}`, () => new THREE.ConeGeometry(r, h, s || 6));
   function tex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; }
-  const rnd = (a, b) => a + Math.random() * (b - a);
 
-  // ---------- light ----------
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x6fb6c8, 0.55); scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xffffff, 0.75); sun.position.set(18, 30, 14);
-  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0006;
+  // ================= light =================
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x7fc6d8, 0.55); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(18, 30, 12);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0008;
   Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 90 });
   scene.add(sun);
 
-  // ---------- cartoon sea ----------
-  const seaU = { uT: { value: 0 }, uDeep: { value: new THREE.Color(0x1aa3d9) }, uShallow: { value: new THREE.Color(0x38c6e6) }, uFoam: { value: new THREE.Color(0xffffff) } };
+  // ================= faceted low-poly sea =================
+  const seaU = { uT: { value: 0 }, uDeep: { value: new THREE.Color(0x158fd1) }, uMid: { value: new THREE.Color(0x26b4e6) }, uLite: { value: new THREE.Color(0x5fdcf0) }, uFoam: { value: new THREE.Color(0xffffff) } };
   const seaMat = new THREE.ShaderMaterial({
-    uniforms: seaU,
-    vertexShader: `uniform float uT; varying vec2 vW;
-      void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xz;
-        w.y += sin(w.x*0.14+uT)*0.22 + cos(w.z*0.17+uT*0.8)*0.18; gl_Position = projectionMatrix * viewMatrix * w; }`,
-    fragmentShader: `uniform float uT; uniform vec3 uDeep, uShallow, uFoam; varying vec2 vW;
+    uniforms: seaU, extensions: { derivatives: true },
+    vertexShader: `uniform float uT; varying vec3 vP;
+      float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+      void main(){ vec4 w = modelMatrix * vec4(position,1.0);
+        float j = h(floor(position.xz*10.0)) * 6.28;
+        w.y += sin(w.x*0.22 + uT*1.1 + j*0.3)*0.35 + cos(w.z*0.19 + uT*0.9)*0.3 + sin(uT*1.7 + j)*0.12;
+        vP = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+    fragmentShader: `uniform float uT; uniform vec3 uDeep, uMid, uLite, uFoam; varying vec3 vP;
       void main(){
-        float n = sin(vW.x*0.32 + uT*0.9 + sin(vW.y*0.18 + uT*0.6)*2.0) * cos(vW.y*0.2 - uT*0.7 + sin(vW.x*0.1)*1.5);
-        vec3 col = mix(uDeep, uShallow, step(0.15, n));
-        // little white wave streaks
-        float s = sin(vW.x*0.9 + sin(vW.y*0.4+uT)*2.5 + uT*1.5) * sin(vW.y*0.7 - uT);
-        col = mix(col, uFoam, step(0.93, s) * 0.85);
-        // foam hugging the hull, wobbling
-        vec2 b = vec2(vW.x/6.0, (vW.y-1.2)/15.6);
-        float d = length(b), a = atan(b.y, b.x);
-        float edge = 1.0 + 0.035*sin(a*14.0 + uT*3.0);
-        col = mix(col, uFoam, step(d, edge + 0.06) * step(edge - 0.02, d));
-        float ring2 = 1.17 + 0.03*sin(a*9.0 - uT*2.0);
-        col = mix(col, mix(col, uFoam, 0.6), step(abs(d - ring2), 0.018));
-        // fade the far sea toward the sky
-        float far = smoothstep(90.0, 180.0, length(vW));
-        gl_FragColor = vec4(mix(col, uShallow*1.15, far), 1.0);
+        vec3 n = normalize(cross(dFdx(vP), dFdy(vP))); if (n.y < 0.0) n = -n;
+        float l = dot(n, normalize(vec3(0.45, 1.0, 0.25)));
+        vec3 col = l > 0.93 ? uLite : (l > 0.85 ? uMid : uDeep);
+        vec2 b = vec2(vP.x/6.0, (vP.z-1.2)/15.4); float d = length(b), a = atan(b.y, b.x);
+        float edge = 1.0 + 0.04*sin(a*12.0 + uT*3.0);
+        col = mix(col, uFoam, step(d, edge + 0.065) * step(edge - 0.02, d));
+        float r2 = 1.18 + 0.03*sin(a*8.0 - uT*2.0);
+        col = mix(col, mix(col, uFoam, 0.55), step(abs(d - r2), 0.02));
+        float far = smoothstep(80.0, 170.0, length(vP.xz));
+        gl_FragColor = vec4(mix(col, uLite*1.08, far), 1.0);
       }`
   });
-  const seaGeo = new THREE.PlaneGeometry(400, 400, 120, 120); seaGeo.rotateX(-Math.PI / 2);
-  const sea = new THREE.Mesh(seaGeo, seaMat); scene.add(sea);
-  const waveY = (x, z, t) => Math.sin(x * 0.14 + t) * 0.22 + Math.cos(z * 0.17 + t * 0.8) * 0.18;
+  const seaGeo = new THREE.PlaneGeometry(360, 360, 90, 90); seaGeo.rotateX(-Math.PI / 2);
+  scene.add(new THREE.Mesh(seaGeo, seaMat));
+  const waveY = (x, z, t) => Math.sin(x * 0.22 + t * 1.1) * 0.35 + Math.cos(z * 0.19 + t * 0.9) * 0.3;
 
-  // ---------- the boat ----------
+  // ================= the boat =================
   const boat = grp();
   const DECK = 1.62, BOW = -12.5, STERN = 15;
   const hull = new THREE.Shape();
   hull.moveTo(-4.6, -STERN); hull.lineTo(4.6, -STERN); hull.lineTo(4.6, 6);
   hull.quadraticCurveTo(4.4, -BOW - 1.5, 0, -BOW + 1.6); hull.quadraticCurveTo(-4.4, -BOW - 1.5, -4.6, 6); hull.lineTo(-4.6, -STERN);
   function band(y0, h, scale, color, bevel) {
-    const g = new THREE.ExtrudeGeometry(hull, { depth: h, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 4, curveSegments: 28 });
-    g.rotateX(-Math.PI / 2); g.scale(scale, 1, scale); g.translate(0, y0, 0); g.computeVertexNormals();
+    const g = new THREE.ExtrudeGeometry(hull, { depth: h, bevelEnabled: true, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 1, curveSegments: 7 });
+    g.rotateX(-Math.PI / 2); g.scale(scale, 1, scale); g.translate(0, y0, 0);
     return mk(g, color, 0, 0, 0, boat);
   }
-  band(-1.6, 0.9, 0.86, 0xff4f4f, 0.45);           // red belly
-  band(-0.6, 1.2, 0.97, 0xfff6e0, 0.45);           // cream hull
-  band(0.7, 0.35, 1.0, 0x2ec4b6, 0.4);             // teal stripe
-  // deck: chunky planks
-  const plank = tex(256, 256, (g, w, h) => {
-    for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#e8a95c' : '#f2b86a'; g.fillRect(i * 32, 0, 32, h); g.fillStyle = '#7a4520'; g.fillRect(i * 32, 0, 3, h); }
-    g.fillStyle = '#7a4520'; [40, 120, 200].forEach((y, k) => { for (let i = 0; i < 8; i += 2) g.fillRect(i * 32 + (k % 2) * 32, y, 32, 3); });
-  });
-  plank.wrapS = plank.wrapT = THREE.RepeatWrapping; plank.repeat.set(0.16, 0.16);
-  const deckGeo = new THREE.ShapeGeometry(hull, 28); deckGeo.rotateX(-Math.PI / 2); deckGeo.scale(0.93, 1, 0.93);
-  const deck = new THREE.Mesh(deckGeo, new THREE.MeshToonMaterial({ map: plank, gradientMap: ramp })); deck.position.y = DECK; deck.receiveShadow = true; boat.add(deck);
-
-  // fat rope-rail of puffy posts
-  const outline = hull.getSpacedPoints(70);
-  outline.forEach((p, i) => {
+  band(-1.6, 0.9, 0.86, 0xff4f4f, 0.45);
+  band(-0.6, 1.2, 0.97, 0xfff6e0, 0.45);
+  band(0.7, 0.35, 1.0, 0x2ec4b6, 0.4);
+  // deck: separate chunky planks, each a slightly different wood
+  const deckShape = new THREE.ShapeGeometry(hull, 7); deckShape.rotateX(-Math.PI / 2); deckShape.scale(0.93, 1, 0.93);
+  mk(deckShape, 0x9a5a2a, 0, DECK - 0.02, 0, boat, { outline: false, shadow: false });
+  const woods = [0xf2b86a, 0xe8a95c, 0xf6c47a];
+  for (let i = 0, x = -3.9; x <= 3.95; x += 0.75, i++) {
+    const zBow = -12.6 + (Math.abs(x) / 4.3) ** 2 * 7, zStern = 13.4, len = zStern - zBow;
+    mk(box(0.66, 0.1, len), woods[i % 3], x, DECK + 0.05, (zStern + zBow) / 2, boat, { outline: false });
+  }
+  // fat posts with red knobs
+  hull.getSpacedPoints(66).forEach((p, i) => {
     if (i % 3) return;
     const x = p.x * 0.9, z = -p.y * 0.9;
-    mk(cyl(0.13, 0.15, 0.9, 10), 0xfff6e0, x, DECK + 0.45, z, boat);
-    mk(sph(0.2, 12), 0xff4f4f, x, DECK + 0.95, z, boat);
+    mk(cyl(0.14, 0.17, 0.9, 6), 0xfff6e0, x, DECK + 0.45, z, boat);
+    mk(ico(0.22), 0xff4f4f, x, DECK + 0.98, z, boat);
   });
 
-  // kitchen hut with a striped awning (stern side)
-  mk(rbox(8, 2.6, 4.4, 0.25), 0xfff0c8, 0, DECK + 1.3, 10.6, boat);
-  mk(rbox(8.4, 0.35, 4.8, 0.15), 0x2ec4b6, 0, DECK + 2.75, 10.6, boat);
-  const stripes = tex(256, 64, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#fff6e0' : '#ff4f4f'; g.fillRect(i * 32, 0, 32, h); } g.fillStyle = '#ff4f4f'; for (let i = 0; i < 8; i++) { g.beginPath(); g.arc(i * 32 + 16, h - 6, 16, 0, Math.PI); g.fill(); } });
-  const awnGeo = new THREE.CylinderGeometry(3, 3, 8.6, 32, 1, true, Math.PI, Math.PI); awnGeo.rotateZ(Math.PI / 2);
-  const awn = new THREE.Mesh(awnGeo, new THREE.MeshToonMaterial({ map: stripes, gradientMap: ramp, side: THREE.DoubleSide })); awn.scale.set(1, 0.42, 0.6); awn.position.set(0, DECK + 2.9, 8.3); awn.castShadow = true; boat.add(awn);
-  // serving window + sign
-  mk(rbox(4.6, 1.1, 0.3, 0.12), 0x3a2a55, 0, DECK + 1.6, 8.35, boat);
+  // kitchen hut: chunky walls, a red gable roof, a scalloped awning
+  const hut = grp(0, DECK, 10.8, boat);
+  mk(box(7.6, 2.7, 4.2), 0xfff0c8, 0, 1.35, 0, hut);
+  [-1, 1].forEach(k => mk(box(0.35, 2.8, 4.4), 0x2ec4b6, k * 3.85, 1.4, 0, hut));
+  const roof = mk(cyl(2.5, 2.5, 8.2, 3), 0xff4f4f, 0, 3.45, 0, hut); roof.rotation.z = Math.PI / 2; roof.rotation.x = Math.PI / 2; roof.scale.set(1, 1, 0.5);
+  mk(box(4.6, 1.2, 0.3), 0x3a2a55, 0, 1.65, -2.15, hut, { outline: false });
+  mk(box(5, 0.3, 1.0), 0xd9e2ee, 0, 1.0, -2.45, hut);
+  for (let i = 0; i < 9; i++) { const s = mk(cone(0.5, 0.7, 4), i % 2 ? 0xfff6e0 : 0xff4f4f, -3.6 + i * 0.9, 2.55, -2.45, hut); s.rotation.x = Math.PI; s.rotation.y = Math.PI / 4; }
   const signTex = tex(1024, 256, (g, w, h) => {
-    g.fillStyle = '#ffd23c'; g.beginPath(); g.roundRect ? g.roundRect(8, 8, w - 16, h - 16, 60) : g.rect(8, 8, w - 16, h - 16); g.fill();
-    g.lineWidth = 16; g.strokeStyle = '#1d1430'; g.stroke();
-    g.font = '120px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 22; g.strokeText('FLOATING', w / 2, h / 2 + 6); g.fillStyle = '#ff4f4f'; g.fillText('FLOATING', w / 2, h / 2 + 6);
+    g.fillStyle = '#ffd23c'; g.beginPath(); g.roundRect ? g.roundRect(10, 10, w - 20, h - 20, 70) : g.rect(10, 10, w - 20, h - 20); g.fill();
+    g.lineWidth = 18; g.strokeStyle = '#1d1430'; g.stroke();
+    g.font = '118px "Lilita One", "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 24; g.strokeText('FLOATING', w / 2, h / 2 + 6); g.fillStyle = '#ff4f4f'; g.fillText('FLOATING', w / 2, h / 2 + 6);
   });
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), new THREE.MeshBasicMaterial({ map: signTex, transparent: true })); sign.position.set(0, DECK + 4.15, 8.1); boat.add(sign);
-  // stove on the counter: a pot with bubbling steam
-  mk(cyl(0.55, 0.5, 0.7), 0x8fa0b8, -1.6, DECK + 2.0, 7.9, boat);
-  const steam = [0, 1, 2].map(i => mk(sph(0.22 + i * 0.05, 14), 0xffffff, -1.6, DECK + 2.6 + i * 0.4, 7.9, boat, { shadow: false }));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 1.3), new THREE.MeshBasicMaterial({ map: signTex, transparent: true })); sign.position.set(0, 5.1, -1.5); sign.rotation.x = -0.12; hut.add(sign);
+  const pot = mk(cyl(0.55, 0.45, 0.7, 7), 0x8fa0b8, -1.6, 1.5, -2.45, hut);
+  const steam = [0, 1, 2].map(i => mk(ico(0.26 + i * 0.05), 0xffffff, -1.6, 2.2, -2.45, hut, { shadow: false }));
 
-  // tables with checker cloths, chairs, plates
-  const checker = tex(128, 128, (g) => { for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#ff4f4f' : '#fff6e0'; g.fillRect(i * 32, j * 32, 32, 32); } });
-  const clothMat = new THREE.MeshToonMaterial({ map: checker, gradientMap: ramp });
-  const seats = [];
-  function fishOnPlate(parent, color) {
-    const f = grp(0, 0.1, 0, parent);
-    mk(sph(0.32, 16), color, 0, 0, 0, f).scale.set(1.3, 0.45, 0.7);
-    const tail = mk(new THREE.ConeGeometry(0.22, 0.35, 12), color, -0.5, 0, 0, f); tail.rotation.z = Math.PI / 2; tail.scale.z = 0.4;
-    mk(sph(0.08, 10), 0xffe14d, 0.5, 0.02, 0.35, parent);
-    return f;
-  }
-  function table(x, z, guests) {
-    const t = grp(x, DECK, z, boat);
-    mk(cyl(0.18, 0.3, 1.0, 12), 0x7a4520, 0, 0.5, 0, t);
-    mk(cyl(1.25, 1.25, 0.18, 32), 0, 0, 1.05, 0, t, { mat: clothMat });
-    const pl = mk(cyl(0.48, 0.38, 0.08, 24), 0xffffff, 0.2, 1.2, 0, t); fishOnPlate(pl, 0xff9a3c);
-    mk(cyl(0.12, 0.1, 0.35, 12), 0x8ee8ff, -0.5, 1.33, 0.35, t);
-    guests.forEach(([ang, kind]) => {
-      const gx = Math.cos(ang) * 1.9, gz = Math.sin(ang) * 1.9;
-      mk(rbox(0.9, 0.18, 0.9, 0.06), 0x2ec4b6, gx, 0.6, gz, t);
-      [[-0.32, -0.32], [0.32, -0.32], [-0.32, 0.32], [0.32, 0.32]].forEach(([lx, lz]) => mk(cyl(0.06, 0.06, 0.55, 8), 0x7a4520, gx + lx, 0.28, gz + lz, t, { outline: false }));
-      const g = guest(kind, t); g.position.set(gx, 0.7, gz); g.rotation.y = -ang - Math.PI / 2; seats.push(g);
+  // ================= dish icons (for tickets and bubbles) =================
+  const DISHES = {
+    grilled: { name: 'Grilled Sardine', draw: g => { plateIcon(g); fishIcon(g, 32, 34, '#b8c7d6'); [26, 32, 38].forEach(x => { g.strokeStyle = '#5a3420'; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 2, 29); g.lineTo(x + 2, 39); g.stroke(); }); lemon(g, 50, 42); } },
+    tacos: { name: 'Glowgill Tacos', draw: g => { plateIcon(g); [22, 42].forEach(x => { g.fillStyle = '#ffcf5c'; g.beginPath(); g.arc(x, 38, 12, Math.PI, 0); g.closePath(); g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#1d1430'; g.stroke(); g.fillStyle = '#7dffb0'; g.beginPath(); g.arc(x, 36, 7, Math.PI, 0); g.fill(); }); } },
+    sushi: { name: 'Tuna Sushi', draw: g => { plateIcon(g, '#2e3350'); [20, 32, 44].forEach(x => { rr(g, x - 7, 32, 14, 10, 4, '#ffffff'); rr(g, x - 8, 26, 16, 8, 4, '#ff6a6a'); }); } },
+    soup: { name: 'Thunder Eel Soup', draw: g => { g.fillStyle = '#4a5a8a'; g.beginPath(); g.moveTo(8, 30); g.quadraticCurveTo(12, 56, 32, 56); g.quadraticCurveTo(52, 56, 56, 30); g.closePath(); g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#1d1430'; g.stroke(); g.fillStyle = '#f2d53c'; g.beginPath(); g.ellipse(32, 30, 24, 8, 0, 0, 7); g.fill(); g.stroke(); g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 3; [24, 38].forEach(x => { g.beginPath(); g.moveTo(x, 20); g.quadraticCurveTo(x - 5, 14, x, 8); g.stroke(); }); } },
+    catch: { name: 'Catch of the Day', draw: g => { plateIcon(g); fishIcon(g, 30, 36, '#ff9a3c'); lemon(g, 50, 44); g.fillStyle = '#2b3a33'; g.fillRect(38, 8, 20, 12); g.strokeStyle = '#8a5a34'; g.lineWidth = 2; g.strokeRect(38, 8, 20, 12); } }
+  };
+  function plateIcon(g, rim) { g.fillStyle = rim || '#ffffff'; g.beginPath(); g.ellipse(32, 38, 28, 18, 0, 0, 7); g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#1d1430'; g.stroke(); }
+  function fishIcon(g, x, y, col) { g.fillStyle = col; g.lineWidth = 2.5; g.strokeStyle = '#1d1430'; g.beginPath(); g.moveTo(x - 14, y); g.lineTo(x - 22, y - 7); g.lineTo(x - 22, y + 7); g.closePath(); g.fill(); g.stroke(); g.beginPath(); g.ellipse(x, y, 15, 7, 0, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#1d1430'; g.beginPath(); g.arc(x + 8, y - 2, 1.8, 0, 7); g.fill(); }
+  function lemon(g, x, y) { g.fillStyle = '#ffe14d'; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); g.lineWidth = 2; g.strokeStyle = '#1d1430'; g.stroke(); }
+  function rr(g, x, y, w, h, r, fill) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); g.fillStyle = fill; g.fill(); g.lineWidth = 2; g.strokeStyle = '#1d1430'; g.stroke(); }
+  for (const k in DISHES) { const c = document.createElement('canvas'); c.width = c.height = 64; DISHES[k].draw(c.getContext('2d')); DISHES[k].src = c.toDataURL(); }
+
+  // ================= characters: big heads, big eyes (Flipline proportions) =================
+  const SKIN = [0xffcc9a, 0xe8a978, 0xb57a52, 0xffdcb8];
+  function face(head, y, z, s, o) {
+    o = o || {};
+    const F = {};
+    F.eyes = [-1, 1].map(k => {
+      const e = grp(k * 0.24 * s, y, z, head);
+      mk(sph(0.2 * s, 8, 6), 0xffffff, 0, 0, 0, e).scale.set(0.85, 1.15, 0.55);
+      mk(sph(0.11 * s, 6, 5), INK, 0.01 * k, -0.02 * s, 0.09 * s, e, { outline: false });
+      mk(sph(0.04 * s, 5, 4), 0xffffff, 0.04 * s, 0.05 * s, 0.17 * s, e, { outline: false, m: { flatShading: false } });
+      if (o.lashes) mk(box(0.16 * s, 0.03, 0.03), INK, 0.12 * s * k, 0.2 * s, 0.05 * s, e, { outline: false }).rotation.z = k * 0.6;
+      return e;
     });
+    F.brows = [-1, 1].map(k => { const b = mk(box(0.22 * s, 0.05 * s, 0.05), o.browColor || 0x5a3420, k * 0.24 * s, y + 0.3 * s, z + 0.02, head, { outline: false }); return b; });
+    F.mouth = mk(G('mouth', () => new THREE.TorusGeometry(0.12, 0.035, 3, 6, Math.PI)), 0x7a1d2a, 0, y - 0.3 * s, z + 0.02, head, { outline: false });
+    F.mouth.rotation.z = Math.PI; F.mouth.scale.setScalar(s);
+    [-1, 1].forEach(k => mk(sph(0.1 * s, 6, 4), 0xff8aa0, k * 0.38 * s, y - 0.18 * s, z - 0.04, head, { outline: false }).scale.set(1, 0.6, 0.3));
+    return F;
   }
-  function eyes(parent, y, z, s, spread) {
-    [-1, 1].forEach(k => {
-      mk(sph(0.16 * s, 14), 0xffffff, k * spread, y, z, parent);
-      mk(sph(0.09 * s, 12), 0x1d1430, k * spread, y, z + 0.1 * s, parent, { outline: false });
-      mk(sph(0.035 * s, 8), 0xffffff, k * spread + 0.03 * s, y + 0.04 * s, z + 0.17 * s, parent, { outline: false });
-    });
+  function setMood(F, mood) { // 1 happy .. 0 angry
+    const mad = mood < 0.3;
+    F.mouth.rotation.z = mad ? 0 : Math.PI; F.mouth.position.y = F.mouth.userData.y0 !== undefined ? F.mouth.userData.y0 + (mad ? -0.08 : 0) : F.mouth.position.y;
+    F.brows.forEach((b, i) => { b.rotation.z = mad ? (i ? 0.45 : -0.45) : (i ? -0.12 : 0.12); });
   }
-  // guests: round, bright, readable at a glance
-  function guest(kind, parent) {
-    const g = grp(0, 0, 0, parent), body = grp(0, 0, 0, g);
-    if (kind === 'sailor') {
-      mk(sph(0.6, 24), 0x3b7bff, 0, 0.6, 0, body).scale.set(1, 1.05, 0.9);
-      mk(sph(0.5, 24), 0xffcc9a, 0, 1.45, 0, body);
-      mk(cyl(0.42, 0.5, 0.25, 20), 0xffffff, 0, 1.85, 0, body); mk(cyl(0.55, 0.55, 0.06, 20), 0x1d4fbf, 0, 1.74, 0, body, { outline: false });
-      eyes(body, 1.5, 0.42, 1, 0.18);
-      mk(sph(0.12, 10), 0xff8a7a, 0, 1.36, 0.48, body);
-    } else if (kind === 'mermaid') {
-      mk(sph(0.55, 24), 0x3fd08a, 0, 0.55, 0, body).scale.set(1, 1.1, 0.9);
-      mk(sph(0.5, 24), 0xbfe8ff, 0, 1.45, 0, body);
-      mk(sph(0.56, 24), 0xff6fae, 0, 1.6, -0.12, body).scale.set(1.05, 1, 1);
-      mk(sph(0.14, 12), 0xffd23c, 0.35, 1.95, 0, body);
-      eyes(body, 1.5, 0.42, 1, 0.18);
-    } else if (kind === 'crab') {
-      mk(sph(0.7, 24), 0xff5d3c, 0, 0.75, 0, body).scale.set(1.25, 0.8, 1);
-      [-1, 1].forEach(k => { mk(cyl(0.05, 0.05, 0.4, 8), 0xff5d3c, k * 0.25, 1.45, 0.2, body); const cl = mk(sph(0.26, 14), 0xff5d3c, k * 0.95, 1.0, 0.35, body); cl.scale.set(1, 0.8, 0.7); });
-      [-1, 1].forEach(k => { mk(sph(0.16, 14), 0xffffff, k * 0.25, 1.7, 0.2, body); mk(sph(0.09, 12), 0x1d1430, k * 0.25, 1.72, 0.33, body, { outline: false }); });
-    } else { // octofolk
-      mk(sph(0.75, 24), 0xa36bff, 0, 1.15, 0, body).scale.set(1, 1.1, 1);
-      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; const l = mk(cyl(0.14, 0.06, 0.7, 10), 0xa36bff, Math.cos(a) * 0.5, 0.4, Math.sin(a) * 0.5, body); l.rotation.set(Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6); }
-      eyes(body, 1.25, 0.62, 1.2, 0.24);
-    }
-    g.userData = { body, ph: Math.random() * 6 };
+  function person(o) {
+    const g = grp(), body = grp(0, 0, 0, g), head = grp(0, o.neck || 1.15, 0, body);
+    mk(sph(0.55, 8, 6), o.shirt, 0, 0.55, 0, body).scale.set(1, 1.05, 0.85);
+    mk(ico(0.82, 1), o.skin, 0, 0.55, 0, head);
+    const F = face(head, 0.62, 0.66, 1.05, o.face);
+    F.mouth.userData.y0 = F.mouth.position.y;
+    o.dress && o.dress(head, body);
+    g.userData = { body, head, F, ph: Math.random() * 6 };
     return g;
   }
-  table(-1.6, -3.5, [[Math.PI * 0.9, 'sailor'], [Math.PI * 0.1, 'mermaid']]);
-  table(1.5, 2.2, [[Math.PI * 1.1, 'crab'], [-Math.PI * 0.15, 'octo']]);
+  const KINDS = {
+    captain: () => person({ shirt: 0x2f5fd6, skin: pick(SKIN), dress: (h, b) => {
+      mk(cyl(0.7, 0.8, 0.35, 8), 0xffffff, 0, 1.35, -0.05, h); mk(cyl(0.95, 0.95, 0.08, 8), 0x1d3fa0, 0, 1.2, 0.12, h); mk(box(0.5, 0.18, 0.1), 0xffd23c, 0, 1.38, 0.7, h);
+      const beard = mk(ico(0.55), 0xe8e8f0, 0, 0.12, 0.42, h); beard.scale.set(1.1, 0.8, 0.6);
+    } }),
+    mermaid: () => person({ shirt: 0x3fd08a, skin: 0xbfe8ff, face: { lashes: true, browColor: 0xd04080 }, dress: (h) => {
+      const hair = mk(ico(0.95, 1), 0xff6fae, 0, 0.75, -0.25, h); hair.scale.set(1.05, 0.95, 1);
+      mk(cone(0.22, 0.3, 4), 0xffd23c, 0.6, 1.35, 0.3, h).rotation.z = -0.6;
+      for (let i = 0; i < 3; i++) mk(ico(0.35), 0xff6fae, (i - 1) * 0.55, -0.15, -0.6, h);
+    } }),
+    pirate: () => person({ shirt: 0xd83a3a, skin: pick(SKIN), face: { browColor: 0x1d1430 }, dress: (h, b) => {
+      const hat = grp(0, 1.25, 0, h); mk(cyl(0.95, 1.05, 0.45, 3), 0x2a2240, 0, 0, 0, hat).rotation.y = Math.PI; mk(ico(0.18), 0xfff6e0, 0, 0.1, 0.62, hat);
+      mk(cyl(0.2, 0.2, 0.05, 6), INK, -0.24, 0.62, 0.78, h, { outline: false }).rotation.x = Math.PI / 2;
+      mk(box(1.65, 0.05, 0.05), INK, 0, 0.78, 0.6, h, { outline: false }).rotation.z = -0.3;
+      for (let i = 0; i < 3; i++) mk(cyl(0.57, 0.57, 0.1, 8), 0xfff6e0, 0, 0.3 + i * 0.25, 0, b, { outline: false });
+    } }),
+    crab: () => {
+      const g = grp(), body = grp(0, 0, 0, g), head = grp(0, 0.6, 0, body);
+      mk(ico(0.9, 1), 0xff5d3c, 0, 0.35, 0, head).scale.set(1.3, 0.75, 1);
+      [-1, 1].forEach(k => { const cl = grp(k * 1.25, 0.25, 0.4, head); mk(ico(0.38), 0xff5d3c, 0, 0, 0, cl); mk(cone(0.2, 0.5, 4), 0xff5d3c, 0.15 * k, 0.32, 0.05, cl).rotation.z = -k * 0.5; });
+      [-1, 1].forEach(k => mk(cyl(0.06, 0.06, 0.55, 5), 0xff5d3c, k * 0.3, 1.0, 0.3, head));
+      const F = face(head, 1.35, 0.3, 1.2, { browColor: INK }); F.mouth.position.set(0, 0.45, 0.82); F.mouth.userData.y0 = 0.45;
+      g.userData = { body, head, F, ph: Math.random() * 6 }; return g;
+    },
+    octo: () => {
+      const g = grp(), body = grp(0, 0, 0, g), head = grp(0, 0.4, 0, body);
+      mk(ico(1.0, 1), 0xa36bff, 0, 0.95, 0, head).scale.set(1, 1.12, 1);
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2, l = mk(cyl(0.18, 0.06, 0.8, 5), 0xa36bff, Math.cos(a) * 0.6, 0.05, Math.sin(a) * 0.6, head); l.rotation.set(Math.sin(a) * 0.8, 0, -Math.cos(a) * 0.8); }
+      const F = face(head, 0.95, 0.9, 1.3, { lashes: true, browColor: 0x5a2aa0 }); F.mouth.userData.y0 = F.mouth.position.y;
+      g.userData = { body, head, F, ph: Math.random() * 6 }; return g;
+    }
+  };
 
-  // the chef: big head, big hat, little legs
-  const chef = grp(0, DECK, 6.2, boat), chefBody = grp(0, 0, 0, chef);
-  mk(sph(0.62, 24), 0xffffff, 0, 0.95, 0, chefBody).scale.set(1, 1.1, 0.95);
-  mk(sph(0.07, 8), 0x1d1430, 0, 1.1, 0.6, chefBody, { outline: false }); mk(sph(0.07, 8), 0x1d1430, 0, 0.85, 0.62, chefBody, { outline: false });
-  mk(sph(0.55, 24), 0xffcc9a, 0, 1.95, 0, chefBody);
-  mk(cyl(0.42, 0.45, 0.7, 24), 0xffffff, 0, 2.65, -0.05, chefBody);
-  [[-0.25, 3.05], [0.25, 3.05], [0, 3.2]].forEach(([x, y]) => mk(sph(0.33, 18), 0xffffff, x, y, -0.05, chefBody));
-  eyes(chefBody, 2.0, 0.46, 1, 0.19);
-  const stache = mk(sph(0.22, 16), 0x5a3420, 0, 1.78, 0.48, chefBody); stache.scale.set(1.6, 0.5, 0.6);
-  mk(sph(0.13, 12), 0xff9a7a, 0, 1.9, 0.55, chefBody);
-  const legs = [-1, 1].map(k => mk(cyl(0.12, 0.12, 0.45, 10), 0x2a2a40, k * 0.22, 0.25, 0, chef));
-  const tray = grp(0.75, 1.15, 0.2, chefBody);
-  mk(cyl(0.45, 0.4, 0.06, 20), 0xc0c8d8, 0, 0, 0, tray); fishOnPlate(mk(cyl(0.35, 0.3, 0.06, 20), 0xffffff, 0, 0.07, 0, tray), 0x7dffb0);
+  // ================= tables and guests =================
+  const checker = tex(64, 64, g => { for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { g.fillStyle = (i + j) % 2 ? '#ff4f4f' : '#fff6e0'; g.fillRect(i * 16, j * 16, 16, 16); } });
+  checker.magFilter = THREE.NearestFilter;
+  const clothMat = new THREE.MeshToonMaterial({ map: checker, gradientMap: ramp, flatShading: true });
+  const seats = [];
+  function table(x, z, guests, n) {
+    const t = grp(x, DECK, z, boat);
+    mk(cyl(0.18, 0.32, 1.0, 6), 0x7a4520, 0, 0.5, 0, t);
+    mk(cyl(1.3, 1.2, 0.22, 8), 0, 0, 1.05, 0, t, { mat: clothMat });
+    mk(cyl(0.12, 0.1, 0.4, 6), 0x8ee8ff, -0.55, 1.36, 0.3, t);
+    mk(cyl(0.05, 0.05, 0.3, 5), 0xfff6e0, 0.6, 1.3, -0.4, t); mk(cone(0.07, 0.15, 5), 0xffb020, 0.6, 1.52, -0.4, t, { outline: false, m: { emissive: 0xff8000 } });
+    guests.forEach(([ang, kind]) => {
+      const gx = Math.cos(ang) * 2.0, gz = Math.sin(ang) * 2.0;
+      mk(box(0.95, 0.2, 0.95), 0x2ec4b6, gx, 0.62, gz, t);
+      mk(box(0.95, 1.0, 0.2), 0x2ec4b6, gx + Math.cos(ang) * 0.45, 1.1, gz + Math.sin(ang) * 0.45, t).rotation.y = -ang + Math.PI / 2;
+      const gu = KINDS[kind](); t.add(gu); gu.position.set(gx, 0.72, gz); gu.rotation.y = -ang - Math.PI / 2;
+      gu.userData.table = n; gu.userData.kind = kind;
+      const plate = mk(cyl(0.42, 0.34, 0.07, 8), 0xffffff, Math.cos(ang) * 0.75, 1.2, Math.sin(ang) * 0.75, t); plate.visible = false;
+      seats.push({ g: gu, t, plate, patience: rnd(0.45, 1), rate: rnd(0.045, 0.075), dish: null, n });
+    });
+  }
+  table(-1.7, -3.6, [[Math.PI * 0.95, 'captain'], [Math.PI * 0.05, 'mermaid']], 1);
+  table(1.6, 2.3, [[Math.PI * 1.1, 'crab'], [-Math.PI * 0.12, 'octo']], 2);
+  table(0, -8.6, [[Math.PI * 0.5, 'pirate']], 3);
 
-  // string of lanterns on two poles
-  const poles = [[-3.9, -7.5], [3.9, -7.5]];
-  poles.forEach(([x, z]) => mk(cyl(0.12, 0.14, 4.2, 10), 0x7a4520, x, DECK + 2.1, z, boat));
+  // the chef
+  const chef = person({ shirt: 0xffffff, skin: 0xffcc9a, neck: 1.2, dress: (h, b) => {
+    mk(cyl(0.6, 0.65, 0.8, 8), 0xffffff, 0, 1.45, -0.05, h);
+    [[-0.38, 1.9], [0.38, 1.9], [0, 2.05], [-0.15, 2.15], [0.2, 2.1]].forEach(([x, y]) => mk(ico(0.38), 0xffffff, x, y, -0.05, h));
+    const st = mk(ico(0.3), 0x5a3420, 0, 0.32, 0.72, h); st.scale.set(1.9, 0.5, 0.6);
+    mk(ico(0.15), 0xff9a7a, 0, 0.45, 0.85, h);
+    [0.3, 0.7].forEach(y => mk(ico(0.07), 0x1d1430, 0, y, 0.48, b, { outline: false }));
+    mk(box(0.9, 0.08, 0.4), 0xff4f4f, 0, 1.0, 0.25, b, { outline: false });
+  } });
+  boat.add(chef); chef.position.set(3.1, DECK, 4);
+  const chefLegs = [-1, 1].map(k => mk(cyl(0.13, 0.13, 0.4, 6), 0x2a2a40, k * 0.22, 0.05, 0, chef));
+  chef.userData.body.position.y = 0.2;
+  const tray = grp(0.8, 1.3, 0.2, chef.userData.body);
+  mk(cyl(0.5, 0.45, 0.06, 8), 0xc0c8d8, 0, 0, 0, tray);
+  const trayFish = mk(ico(0.3), 0xff9a3c, 0, 0.18, 0, tray); trayFish.scale.set(1.4, 0.5, 0.6);
+
+  // lanterns, mast, flag, life ring
+  [[-3.9, -6], [3.9, -6]].forEach(([x, z]) => mk(cyl(0.12, 0.14, 4.2, 6), 0x7a4520, x, DECK + 2.1, z, boat));
   const lanterns = [];
-  for (let i = 0; i <= 8; i++) { const u = i / 8, x = -3.9 + u * 7.8, y = DECK + 4.0 - Math.sin(u * Math.PI) * 0.8; lanterns.push(mk(sph(0.2, 12), [0xffd23c, 0xff5d5d, 0x3fd08a][i % 3], x, y, -7.5, boat, { emissive: 0x000000 })); }
-  // a mast with a flag at the bow
-  mk(cyl(0.16, 0.2, 6, 12), 0x7a4520, 0, DECK + 3, -9.2, boat);
-  const flag = mk(new THREE.BoxGeometry(0.06, 1, 1.6), 0xff4f4f, 0, DECK + 5.4, -8.35, boat);
-  // life ring on the side
-  const lr = mk(new THREE.TorusGeometry(0.55, 0.2, 12, 28), 0xff4f4f, 4.55, DECK - 0.1, 3.5, boat); lr.rotation.y = Math.PI / 2;
+  for (let i = 0; i <= 8; i++) { const u = i / 8, x = -3.9 + u * 7.8, y = DECK + 4.0 - Math.sin(u * Math.PI) * 0.8; lanterns.push(mk(ico(0.22), [0xffd23c, 0xff5d5d, 0x3fd08a][i % 3], x, y, -6, boat)); }
+  mk(cyl(0.16, 0.2, 6, 6), 0x7a4520, 0, DECK + 3, -11, boat);
+  const flag = mk(box(0.06, 1, 1.6), 0xff4f4f, 0, DECK + 5.4, -10.15, boat);
+  const ring = mk(G('ring', () => new THREE.TorusGeometry(0.55, 0.22, 4, 8)), 0xff4f4f, 4.55, DECK - 0.1, 3.5, boat); ring.rotation.y = Math.PI / 2;
+  [[-3.2, 7.5], [3.3, 7.3]].forEach(([x, z]) => { mk(cyl(0.45, 0.4, 0.9, 7), 0x9a5a2a, x, DECK + 0.45, z, boat); [-0.2, 0.2].forEach(dy => mk(cyl(0.47, 0.47, 0.08, 7), 0x3a2a55, x, DECK + 0.45 + dy, z, boat, { outline: false })); });
 
-  // ---------- around the boat ----------
+  // ================= around the boat =================
   function island(x, z, s) {
-    const g = grp(x, -0.5, z); g.scale.setScalar(s);
-    mk(cyl(8, 9, 1.4, 28), 0xffe08a, 0, 0.4, 0, g, { shadow: false });
-    mk(sph(5, 18), 0x3fd08a, -1, 1.2, 0, g, { shadow: false }).scale.set(1, 0.7, 1);
-    [[3, 2], [-4, -2]].forEach(([px, pz]) => {
-      const tr = mk(cyl(0.3, 0.45, 6, 10), 0xb06a34, px, 3.5, pz, g, { shadow: false }); tr.rotation.z = 0.18;
-      for (let i = 0; i < 5; i++) { const l = mk(sph(1.1, 12), 0x29b36b, px + 0.6, 6.6, pz, g, { shadow: false }); l.scale.set(1.6, 0.35, 0.7); l.rotation.y = i * 1.25; l.translateX(1.2); }
+    const g = grp(x, -0.4, z); g.scale.setScalar(s);
+    mk(cyl(8, 9.5, 1.6, 9), 0xffe08a, 0, 0.4, 0, g, { shadow: false });
+    mk(ico(4.5, 0), 0x3fd08a, -1.5, 1.6, -0.5, g, { shadow: false }).scale.set(1, 0.6, 1);
+    mk(ico(2, 0), 0x9aa4b4, 4, 1.2, 3, g, { shadow: false });
+    [[3, 1.5], [-3.5, -2], [0.5, 4]].forEach(([px, pz], i) => {
+      const tr = mk(cyl(0.3, 0.45, 6, 5), 0xb06a34, px, 3.5, pz, g, { shadow: false }); tr.rotation.z = 0.18 - i * 0.15;
+      for (let k = 0; k < 5; k++) { const l = mk(cone(0.8, 3, 3), 0x29b36b, px + 0.6, 6.4, pz, g, { shadow: false }); l.rotation.set(Math.PI / 2 - 0.4, 0, 0); l.rotation.y = k * 1.25; l.rotateX(0); l.translateY(1.3); }
     });
   }
   island(-70, -90, 1.3); island(85, -70, 1); island(30, -140, 1.6);
   const clouds = [];
-  for (let i = 0; i < 7; i++) {
-    const g = grp(rnd(-120, 120), rnd(30, 42), rnd(-150, -10));
-    for (let k = 0; k < 4; k++) mk(sph(rnd(3, 5), 16), 0xffffff, k * 3.8 - 6, rnd(-0.6, 1.2), rnd(-1, 1), g, { shadow: false });
-    clouds.push(g);
-  }
-  // a fish that jumps every few seconds, with a splash
+  for (let i = 0; i < 7; i++) { const g = grp(rnd(-120, 120), rnd(30, 42), rnd(-150, -10)); for (let k = 0; k < 4; k++) mk(ico(rnd(3, 5)), 0xffffff, k * 3.8 - 6, rnd(-0.6, 1.2), rnd(-1, 1), g, { shadow: false }); clouds.push(g); }
+  const buoy = grp(10, 0, -6); mk(cyl(0.6, 0.9, 1.6, 6), 0xff4f4f, 0, 0.8, 0, buoy); mk(box(1.4, 0.3, 0.3), 0xfff6e0, 0, 1.2, 0, buoy, { outline: false }); mk(cone(0.35, 0.9, 6), 0xffd23c, 0, 2.0, 0, buoy);
+
+  // jumping fish + splash rings
   const jumper = grp(); jumper.visible = false;
-  mk(sph(0.5, 18), 0xff9a3c, 0, 0, 0, jumper).scale.set(1.4, 0.75, 0.5);
-  const jt = mk(new THREE.ConeGeometry(0.35, 0.55, 12), 0xff9a3c, -0.8, 0, 0, jumper); jt.rotation.z = Math.PI / 2; jt.scale.z = 0.3;
-  [-1, 1].forEach(k => { mk(sph(0.12, 10), 0xffffff, 0.45, 0.12, k * 0.2, jumper); mk(sph(0.06, 8), 0x1d1430, 0.52, 0.12, k * 0.26, jumper, { outline: false }); });
+  mk(ico(0.55), 0xff9a3c, 0, 0, 0, jumper).scale.set(1.4, 0.8, 0.55);
+  mk(cone(0.35, 0.55, 4), 0xff9a3c, -0.85, 0, 0, jumper).rotation.z = Math.PI / 2;
+  [-1, 1].forEach(k => { mk(sph(0.14, 6, 5), 0xffffff, 0.45, 0.15, k * 0.22, jumper); mk(sph(0.07, 5, 4), INK, 0.53, 0.15, k * 0.28, jumper, { outline: false }); });
   const splashes = [];
-  function splash(x, z) {
-    const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.12, 6, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
-    r.rotation.x = -Math.PI / 2; r.position.set(x, 0.3, z); scene.add(r); splashes.push({ r, t: 0 });
-  }
+  function splash(x, z) { const r = new THREE.Mesh(new THREE.TorusGeometry(1, 0.14, 3, 10), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })); r.rotation.x = -Math.PI / 2; r.position.set(x, 0.4, z); scene.add(r); splashes.push({ r, t: 0 }); }
   let jump = null, nextJump = 1.5;
 
   // gull
-  const gull = grp(0, 12, 0); const gw = [];
-  mk(sph(0.35, 14), 0xffffff, 0, 0, 0, gull).scale.set(1, 0.8, 1.8);
-  mk(new THREE.ConeGeometry(0.1, 0.3, 8), 0xffb020, 0, 0, -0.75, gull).rotation.x = -Math.PI / 2;
-  [-1, 1].forEach(k => { const w = grp(0, 0, 0, gull); mk(rbox(1.6, 0.08, 0.6, 0.03), 0xffffff, k * 0.8, 0, 0, w); gw.push(w); });
+  const gull = grp(0, 12, 0), gw = [];
+  mk(ico(0.4), 0xffffff, 0, 0, 0, gull).scale.set(1, 0.8, 1.8);
+  mk(cone(0.12, 0.35, 4), 0xffb020, 0, 0, -0.8, gull).rotation.x = -Math.PI / 2;
+  [-1, 1].forEach(k => { const w = grp(0, 0, 0, gull); mk(box(1.6, 0.08, 0.6), 0xffffff, k * 0.8, 0, 0, w); gw.push(w); });
 
-  // ---------- camera: drag to orbit, wheel / pinch to zoom ----------
-  let yaw = 0.75, pitch = 0.42, dist = 34, auto = true;
-  const target = new THREE.Vector3(0, 2, 1);
+  // ================= coins that burst out when a guest pays (the Bloons pop) =================
+  const coins = [];
+  const coinGeo = cyl(0.28, 0.28, 0.08, 8);
+  function burst(obj, n) {
+    obj.getWorldPosition(v3);
+    for (let i = 0; i < n; i++) {
+      const c = mk(coinGeo, 0xffd23c, v3.x, v3.y + 2, v3.z, scene, { shadow: false, m: { emissive: 0x6a4a00 } });
+      c.rotation.x = Math.PI / 2;
+      coins.push({ c, vx: rnd(-3, 3), vy: rnd(5, 8), vz: rnd(-3, 3), s: rnd(6, 12), t: 0 });
+    }
+  }
+
+  // ================= HUD: tickets, bubbles, pops =================
+  const v3 = new THREE.Vector3(), labels = $('labels'), rail = $('rail');
+  let cash = 120;
+  function toScreen(obj, up) { obj.getWorldPosition(v3); v3.y += up; v3.project(camera); return v3.z > 1 ? null : [(v3.x + 1) / 2 * innerWidth, (1 - v3.y) / 2 * innerHeight]; }
+  function pop(obj, text, cls, up) {
+    const p = toScreen(obj, up || 3.3); if (!p) return;
+    const el = document.createElement('div'); el.className = 'pop' + (cls ? ' ' + cls : ''); el.textContent = text;
+    el.style.left = p[0] + 'px'; el.style.top = p[1] + 'px'; labels.appendChild(el); setTimeout(() => el.remove(), 1400);
+  }
+  const DISH_FOR = { captain: ['grilled', 'catch'], mermaid: ['sushi', 'tacos'], crab: ['catch', 'grilled'], octo: ['soup', 'tacos', 'sushi'], pirate: ['soup', 'sushi'] };
+  const PRICE = { grilled: 12, tacos: 24, sushi: 30, soup: 30, catch: 10 };
+  seats.forEach(s => {
+    s.dish = pick(DISH_FOR[s.g.userData.kind]);
+    s.el = document.createElement('div'); s.el.className = 'bub';
+    s.el.innerHTML = '<div class="think"><img alt=""></div><div class="bar"><i></i></div>';
+    labels.appendChild(s.el);
+  });
+  function drawRail(newOne) {
+    rail.innerHTML = '';
+    const urgent = seats.reduce((a, b) => (b.patience < a.patience ? b : a));
+    seats.forEach(s => {
+      const d = DISHES[s.dish], el = document.createElement('div');
+      el.className = 'tk' + (s === urgent ? ' urgent' : '') + (s === newOne ? ' new' : '');
+      el.innerHTML = `<span class="who">Table ${s.n}</span><img src="${d.src}" alt=""><span>${d.name}</span>`;
+      rail.appendChild(el);
+    });
+  }
+  drawRail();
+  function addCash(n) { cash += n; $('cash').textContent = '$' + cash; const c = document.querySelector('.coin'); c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump'); }
+  function serve(s) {
+    const pay = PRICE[s.dish], tip = s.patience > 0.6 ? Math.round(pay * 0.5) : 0;
+    burst(s.g, 6 + (tip ? 4 : 0));
+    pop(s.g, '+$' + (pay + tip), s.patience > 0.6 ? 'big' : '');
+    if (tip) setTimeout(() => pop(s.g, s.patience > 0.85 ? 'PERFECT!' : 'TIP!', 'heart', 4.4), 220);
+    setTimeout(() => addCash(pay + tip), 450);
+    s.plate.visible = true; s.eatT = 2.2; s.g.userData.hop = 0.5;
+    s.patience = 1; s.dish = pick(DISH_FOR[s.g.userData.kind]);
+    drawRail(s);
+  }
+  $('serve').addEventListener('click', () => serve(seats.reduce((a, b) => (b.patience < a.patience ? b : a))));
+  addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); $('serve').click(); } });
+
+  // ================= camera =================
+  let yaw = Math.PI - 0.75, pitch = 0.55, dist = 30, auto = true;
+  const target = new THREE.Vector3(0, 2.4, 0);
   const ptrs = new Map(); let pinch = 0;
-  renderer.domElement.addEventListener('pointerdown', e => { ptrs.set(e.pointerId, [e.clientX, e.clientY]); auto = false; renderer.domElement.setPointerCapture(e.pointerId); });
-  renderer.domElement.addEventListener('pointermove', e => {
+  const cv = renderer.domElement;
+  cv.addEventListener('pointerdown', e => { ptrs.set(e.pointerId, [e.clientX, e.clientY]); auto = false; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => {
     if (!ptrs.has(e.pointerId)) return;
     const [px, py] = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
-    if (ptrs.size === 1) { yaw -= (e.clientX - px) * 0.006; pitch = Math.min(1.2, Math.max(0.15, pitch + (e.clientY - py) * 0.004)); }
-    else { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) dist = Math.min(80, Math.max(16, dist * pinch / d)); pinch = d; }
+    if (ptrs.size === 1) { yaw -= (e.clientX - px) * 0.006; pitch = Math.min(1.25, Math.max(0.15, pitch + (e.clientY - py) * 0.004)); }
+    else { const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); if (pinch) dist = Math.min(70, Math.max(12, dist * pinch / d)); pinch = d; }
   });
   const up = e => { ptrs.delete(e.pointerId); pinch = 0; };
-  renderer.domElement.addEventListener('pointerup', up); renderer.domElement.addEventListener('pointercancel', up);
-  renderer.domElement.addEventListener('wheel', e => { e.preventDefault(); dist = Math.min(80, Math.max(16, dist * (1 + Math.sign(e.deltaY) * 0.08))); auto = false; }, { passive: false });
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  cv.addEventListener('wheel', e => { e.preventDefault(); dist = Math.min(70, Math.max(12, dist * (1 + Math.sign(e.deltaY) * 0.08))); auto = false; }, { passive: false });
 
-  // ---------- floating money pops, like a tycoon game ----------
-  const popsEl = document.getElementById('pops'), v3 = new THREE.Vector3();
-  function pop(obj, text, cls) {
-    obj.getWorldPosition(v3); v3.y += 2.6; v3.project(camera);
-    if (v3.z > 1) return;
-    const el = document.createElement('div'); el.className = 'pop' + (cls ? ' ' + cls : ''); el.textContent = text;
-    el.style.left = ((v3.x + 1) / 2 * innerWidth) + 'px'; el.style.top = ((1 - v3.y) / 2 * innerHeight) + 'px';
-    popsEl.appendChild(el); setTimeout(() => el.remove(), 1400);
-  }
-  let nextPop = 1;
-
-  // ---------- day / sunset, outlines ----------
+  // ================= day / sunset, outlines =================
   const looks = {
-    day: { deep: 0x1aa3d9, shallow: 0x38c6e6, hemi: 0.55, sun: 0.75, sunC: 0xffffff, glow: 0x000000 },
-    sunset: { deep: 0x3b4fb8, shallow: 0x7a7ae0, hemi: 0.45, sun: 0.7, sunC: 0xffb070, glow: 0xffa040 }
+    day: { deep: 0x158fd1, mid: 0x26b4e6, lite: 0x5fdcf0, hemi: 0.55, sun: 0.8, sunC: 0xffffff, glow: false },
+    sunset: { deep: 0x3a3fa8, mid: 0x5a5ad0, lite: 0xb07ad8, hemi: 0.42, sun: 0.75, sunC: 0xffa860, glow: true }
   };
   let look = 'day';
   function setLook(k) {
     look = k; const L = looks[k];
-    seaU.uDeep.value.set(L.deep); seaU.uShallow.value.set(L.shallow);
+    seaU.uDeep.value.set(L.deep); seaU.uMid.value.set(L.mid); seaU.uLite.value.set(L.lite);
     hemi.intensity = L.hemi; sun.intensity = L.sun; sun.color.set(L.sunC);
-    lanterns.forEach(l => l.material = T(l.material.color.getHex(), L.glow ? l.material.color.getHex() : 0));
+    lanterns.forEach(l => { const c = l.material.color.getHex(); l.material = T(c, L.glow ? { emissive: c } : undefined); });
     document.body.classList.toggle('sunset', k === 'sunset');
-    document.getElementById('tTime').textContent = k === 'day' ? 'Sunset' : 'Daytime';
+    $('tTime').textContent = k === 'day' ? 'Sunset' : 'Daytime';
   }
-  document.getElementById('tTime').addEventListener('click', () => setLook(look === 'day' ? 'sunset' : 'day'));
+  $('tTime').addEventListener('click', () => setLook(look === 'day' ? 'sunset' : 'day'));
   let lines = true;
-  document.getElementById('tOutline').addEventListener('click', () => { lines = !lines; outlines.forEach(o => { o.visible = lines; }); document.getElementById('tOutline').textContent = 'Outlines: ' + (lines ? 'on' : 'off'); });
+  $('tOutline').addEventListener('click', () => { lines = !lines; outlines.forEach(o => { o.visible = lines; }); $('tOutline').textContent = 'Outlines: ' + (lines ? 'on' : 'off'); });
 
-  // ---------- loop ----------
-  const clock = new THREE.Clock(); let t = 0;
+  // ================= loop =================
+  const clock = new THREE.Clock(); let t = 0, railT = 0;
   function frame() {
     const dt = Math.min(0.05, clock.getDelta()); t += reduce ? dt * 0.3 : dt;
     seaU.uT.value = t;
-    // the boat bobs on the waves
-    boat.position.y = waveY(0, 1, t) * 0.8; boat.rotation.z = Math.sin(t * 0.9) * 0.025; boat.rotation.x = Math.cos(t * 0.7) * 0.015;
-    // chef shuffles between the kitchen and the tables, bouncing
-    const walk = Math.sin(t * 0.5);
-    chef.position.z = 2 + walk * 4; chef.position.x = 3.1;
-    chef.rotation.y = Math.cos(t * 0.5) > 0 ? Math.PI : 0;
-    const step = Math.abs(Math.sin(t * 7));
-    chefBody.position.y = step * 0.18; chefBody.scale.set(1 + (1 - step) * 0.05, 1 - (1 - step) * 0.05, 1);
-    legs[0].position.y = 0.25 + Math.max(0, Math.sin(t * 7)) * 0.12; legs[1].position.y = 0.25 + Math.max(0, -Math.sin(t * 7)) * 0.12;
-    // guests wiggle in their seats
-    seats.forEach(g => { const b = g.userData.body, s = Math.sin(t * 3 + g.userData.ph); b.scale.set(1 - s * 0.03, 1 + s * 0.04, 1 - s * 0.03); b.rotation.z = Math.sin(t * 1.4 + g.userData.ph) * 0.06; });
-    steam.forEach((s, i) => { const k = (t * 0.6 + i / 3) % 1; s.position.y = DECK + 2.4 + k * 1.6; s.scale.setScalar(0.6 + k); s.visible = k < 0.9; });
+    boat.position.y = waveY(0, 1, t) * 0.6; boat.rotation.z = Math.sin(t * 0.9) * 0.025; boat.rotation.x = Math.cos(t * 0.7) * 0.015;
+    // chef shuffles up and down the deck, bouncing
+    const w = Math.sin(t * 0.45); chef.position.z = 0 + w * 6; chef.rotation.y = Math.cos(t * 0.45) > 0 ? Math.PI : 0;
+    const step = Math.abs(Math.sin(t * 8)), cb = chef.userData.body;
+    cb.position.y = 0.2 + step * 0.2; cb.scale.set(1 + (1 - step) * 0.06, 1 - (1 - step) * 0.06, 1);
+    chefLegs[0].position.y = 0.05 + Math.max(0, Math.sin(t * 8)) * 0.15; chefLegs[1].position.y = 0.05 + Math.max(0, -Math.sin(t * 8)) * 0.15;
+    chef.userData.head.rotation.z = Math.sin(t * 4) * 0.08;
+    if (Math.sin(t * 0.37) > 0.98) chef.userData.F.eyes.forEach(e => e.scale.y = 0.1); else chef.userData.F.eyes.forEach(e => e.scale.y = 1);
+    // guests: patience drains, faces change, they wiggle and blink
+    seats.forEach((s, i) => {
+      const u = s.g.userData;
+      s.patience = Math.max(0, s.patience - dt * s.rate);
+      if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); s.patience = 1; s.dish = pick(DISH_FOR[u.kind]); drawRail(s); }
+      setMood(u.F, s.patience);
+      const wig = Math.sin(t * (s.patience < 0.3 ? 9 : 3) + u.ph);
+      u.body.scale.set(1 - wig * 0.03, 1 + wig * 0.045, 1 - wig * 0.03);
+      u.head.rotation.z = Math.sin(t * 1.5 + u.ph) * (s.patience < 0.3 ? 0.18 : 0.07);
+      if (u.hop > 0) { u.hop -= dt; u.body.position.y = Math.sin((0.5 - u.hop) / 0.5 * Math.PI) * 0.6; } else u.body.position.y = 0;
+      const blink = (t * 0.7 + u.ph) % 4 < 0.12; u.F.eyes.forEach(e => { e.scale.y = blink ? 0.1 : 1; });
+      if (s.eatT > 0) { s.eatT -= dt; if (s.eatT <= 0) s.plate.visible = false; }
+      // bubble over their head
+      const p = toScreen(s.g, 3.4);
+      if (p) {
+        s.el.hidden = false; s.el.style.left = p[0] + 'px'; s.el.style.top = p[1] + 'px';
+        const img = s.el.querySelector('img'); if (img.dataset.d !== s.dish) { img.src = DISHES[s.dish].src; img.dataset.d = s.dish; }
+        const bar = s.el.querySelector('i'); bar.style.width = (s.patience * 100) + '%'; bar.style.background = s.patience > 0.6 ? '#3fd08a' : s.patience > 0.3 ? '#ffd23c' : '#ff5d5d';
+      } else s.el.hidden = true;
+    });
+    railT -= dt; if (railT <= 0) { drawRail(); railT = 0.5; }
+    steam.forEach((s, i) => { const k = (t * 0.6 + i / 3) % 1; s.position.y = 2.1 + k * 1.6; s.scale.setScalar(0.6 + k); s.visible = k < 0.9; });
     flag.rotation.y = Math.sin(t * 3) * 0.25;
-    lanterns.forEach((l, i) => { l.position.y += Math.sin(t * 2 + i) * 0.002; });
+    buoy.position.y = waveY(10, -6, t) - 0.2; buoy.rotation.z = Math.sin(t * 1.3) * 0.15;
     clouds.forEach((c, i) => { c.position.x += dt * (0.6 + i * 0.1); if (c.position.x > 140) c.position.x = -140; });
     gull.position.set(Math.cos(t * 0.3) * 22, 12 + Math.sin(t) * 0.6, Math.sin(t * 0.3) * 22 + 1); gull.rotation.y = -t * 0.3; gull.rotation.z = 0.25;
-    gw.forEach((w, k) => { w.rotation.z = (k ? -1 : 1) * Math.sin(t * 8) * 0.5; });
-    // jumping fish
+    gw.forEach((g, k) => { g.rotation.z = (k ? -1 : 1) * Math.sin(t * 8) * 0.5; });
     nextJump -= dt;
     if (!jump && nextJump <= 0) { const a = rnd(0, Math.PI * 2), r = rnd(11, 16); jump = { x: Math.cos(a) * r, z: Math.sin(a) * r + 1, dir: a + Math.PI / 2, u: 0 }; jumper.visible = true; splash(jump.x, jump.z); }
     if (jump) {
-      jump.u += dt / 1.2; const u = jump.u, dx = Math.cos(jump.dir) * 4, dz = Math.sin(jump.dir) * 4;
-      jumper.position.set(jump.x + dx * u, Math.sin(u * Math.PI) * 4, jump.z + dz * u);
+      jump.u += dt / 1.2; const u = jump.u;
+      jumper.position.set(jump.x + Math.cos(jump.dir) * 4 * u, Math.sin(u * Math.PI) * 4, jump.z + Math.sin(jump.dir) * 4 * u);
       jumper.rotation.set(0, -jump.dir, Math.cos(u * Math.PI) * 1.1);
       if (u >= 1) { splash(jumper.position.x, jumper.position.z); jumper.visible = false; jump = null; nextJump = rnd(2.5, 4.5); }
     }
     for (let i = splashes.length - 1; i >= 0; i--) { const s = splashes[i]; s.t += dt; s.r.scale.setScalar(0.4 + s.t * 2.2); s.r.material.opacity = 1 - s.t / 0.8; if (s.t > 0.8) { scene.remove(s.r); splashes.splice(i, 1); } }
-    // money and hearts popping off the guests
-    nextPop -= dt;
-    if (nextPop <= 0) { const g = seats[Math.floor(Math.random() * seats.length)]; Math.random() < 0.7 ? pop(g, '+$' + [12, 15, 24, 30][Math.floor(Math.random() * 4)]) : pop(g, '♥ ♥', 'heart'); nextPop = rnd(1.2, 2.2); }
-    // camera
-    if (auto && !reduce) yaw += dt * 0.08;
+    for (let i = coins.length - 1; i >= 0; i--) {
+      const c = coins[i]; c.t += dt; c.vy -= 18 * dt;
+      c.c.position.x += c.vx * dt; c.c.position.y += c.vy * dt; c.c.position.z += c.vz * dt; c.c.rotation.z += c.s * dt;
+      if (c.t > 1.1) { scene.remove(c.c); coins.splice(i, 1); }
+    }
+    if (auto && !reduce) yaw += dt * 0.07;
     camera.position.set(target.x + Math.sin(yaw) * Math.cos(pitch) * dist, target.y + Math.sin(pitch) * dist, target.z + Math.cos(yaw) * Math.cos(pitch) * dist);
     camera.lookAt(target);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
   frame();
+  window.__serve = () => $('serve').click();
 })();
 </script>
