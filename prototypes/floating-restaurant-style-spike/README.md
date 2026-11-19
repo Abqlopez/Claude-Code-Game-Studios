@@ -9,4 +9,8 @@
 
 **Findings:** none yet.
 
-Version 2: the models are hand-built low-poly in code. Free model packs (Kenney, Quaternius) could not be downloaded from the sandbox; uploading them would allow a swap.
+Version 3: real models from Quaternius (CC0 1.0, public domain): Pirate Kit, Sushi Restaurant Kit,
+Cute Animated Monsters, Ultimate Animated Character Pack, Cute Fish Pack and Ultimate Food Pack.
+They live in `models/` as glTF JSON with embedded data (artifacts cannot serve .glb). The boat hull,
+sea, clouds and coins are still built in code. Models are recoloured in toon shading at load time
+and get a screen-space ink outline, which also works on the animated characters.
