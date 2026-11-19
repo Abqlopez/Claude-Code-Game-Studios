@@ -5,7 +5,7 @@
 
 **How to run:** open `index.html` in a browser (it loads three.js r128 from cdnjs). Drag to orbit, scroll or pinch to zoom. Buttons toggle outlines and sunset.
 
-**Status:** in progress. Waiting on the person's verdict.
+**Status:** in progress (v4: our own guests on Quaternius bodies, custom squid, no weapons).
 
 **Findings:** none yet.
 

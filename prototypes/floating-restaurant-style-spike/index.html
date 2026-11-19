@@ -90,7 +90,7 @@
 <div id="rail" aria-label="Orders"></div>
 <button id="serve" type="button">SERVE!<small>serves the most impatient guest</small></button>
 <div id="side">
-  <div class="note"><b>Look test 3</b>Quaternius models, toon colors, thick outlines. Drag to turn, scroll or pinch to zoom.</div>
+  <div class="note"><b>Look test 4</b>Our own guests on Quaternius bodies: new colours, big heads, no weapons, a real squid. Drag to turn, scroll or pinch to zoom.</div>
   <div class="row">
     <button id="tOutline" type="button">Outlines: on</button>
     <button id="tTime" type="button" class="alt">Sunset</button>
@@ -191,15 +191,39 @@
   function tex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; }
 
   // Turn a loaded model into the toon look: flat 3-tone shading, original colors, an ink outline.
+  // Recolour a palette texture: rotate the hue of everything except skin tones and greys.
+  const recolCache = new Map();
+  function recolor(map, hue, sat) {
+    const key = map.uuid + ':' + hue + ':' + sat;
+    if (recolCache.has(key)) return recolCache.get(key);
+    const img = map.image, c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height), px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      const col = new THREE.Color(px[i] / 255, px[i + 1] / 255, px[i + 2] / 255), hsl = {}; col.getHSL(hsl);
+      const skin = hsl.h > 0.02 && hsl.h < 0.12 && hsl.s > 0.2 && hsl.s < 0.8 && hsl.l > 0.35 && hsl.l < 0.85;
+      if (skin || hsl.s < 0.12) continue;
+      col.setHSL((hsl.h + hue / 360 + 1) % 1, Math.min(1, hsl.s * (sat || 1)), hsl.l);
+      px[i] = col.r * 255; px[i + 1] = col.g * 255; px[i + 2] = col.b * 255;
+    }
+    g.putImageData(d, 0, 0);
+    const t = new THREE.CanvasTexture(c); t.flipY = map.flipY; t.wrapS = map.wrapS; t.wrapT = map.wrapT; t.magFilter = map.magFilter; t.minFilter = map.minFilter;
+    recolCache.set(key, t); return t;
+  }
+  const WEAPON = /weapon|sword|axe|cutlass|pistol|rifle|knife|dagger|gun/i;
   function toonify(root, o) {
     o = o || {};
+    const drop = []; root.traverse(n => { if (n.name && WEAPON.test(n.name) && !n.isBone) drop.push(n); });
+    drop.forEach(n => n.parent && n.parent.remove(n)); // our guests come to eat, not to fight
     const meshes = []; root.traverse(m => { if (m.isMesh) meshes.push(m); });
     meshes.forEach(m => {
       const conv = mm => {
         const t = new THREE.MeshToonMaterial({ color: mm.color ? mm.color.clone() : new THREE.Color(0xffffff), map: mm.map || null, gradientMap: ramp, vertexColors: !!mm.vertexColors, transparent: !!mm.transparent, opacity: mm.opacity === undefined ? 1 : mm.opacity });
         if (o.gltf && mm.color) t.color.convertLinearToSRGB(); // keep glTF colours as bright as they were authored
         t.skinning = !!m.isSkinnedMesh;
+        if (t.map && o.hue !== undefined) t.map = recolor(t.map, o.hue, o.sat);
         if (t.map) { t.map.encoding = THREE.LinearEncoding; t.map.needsUpdate = true; }
+        if (o.mats && mm.name && o.mats[mm.name] !== undefined) t.color.set(o.mats[mm.name]);
         if (o.tint) t.color.multiply(new THREE.Color(o.tint));
         if (o.bright) t.color.multiplyScalar(o.bright);
         return t;
@@ -222,7 +246,7 @@
 
   // ================= loading =================
   const ASSETS = {
-    glb: ['captain', 'anne', 'sharky', 'crab', 'octo', 'chef', 'barrel', 'bucket_fishes', 'anchor', 'chest_gold', 'palmtree_1', 'palmtree_2', 'palmtree_3', 'rock_1', 'rock_2', 'dock',
+    glb: ['captain', 'anne', 'sharky', 'crab', 'fishfolk', 'chefhat', 'coin', 'barrel', 'bucket_fishes', 'anchor', 'chest_gold', 'palmtree_1', 'palmtree_2', 'palmtree_3', 'rock_1', 'rock_2', 'dock',
       'table', 'stool', 'light', 'pot_1_filled', 'oven', 'counter_straight', 'plate', 'salmonnigiri', 'ramen', 'onigiri', 'maguronigiri', 'plant1',
       'fish_clownfish', 'fish_puffer', 'fish_tuna', 'fish_koi', 'fish_bluetang', 'food_fish', 'food_steak']
   };
@@ -333,7 +357,7 @@
     for (const k in DISHES) {
       const holder = new THREE.Group(); sc.add(holder);
       const plate = fit(toonify(copy('plate'), { gltf: true }), 0.12, 'w'); plate.scale.multiplyScalar(14); holder.add(plate);
-      const food = fit(toonify(copy(DISHES[k].model), { gltf: DISHES[k].model.indexOf('food_') !== 0 }), 1.2, 'w'); food.position.y = 0.1; holder.add(food);
+      const food = fit(toonify(copy(DISHES[k].model), { gltf: true }), 1.2, 'w'); food.position.y = 0.1; holder.add(food);
       holder.rotation.y = -0.5;
       r.render(sc, cam); DISHES[k].src = r.domElement.toDataURL(); sc.remove(holder);
     }
@@ -343,17 +367,78 @@
   // ================= everything that needs models =================
   const seats = [], anims = [];
   let chef, chefAct, jumpers = [], coinProto, built = false;
+  // Our own guests, built on Quaternius bodies: new colours, bigger heads, no weapons.
   const KIND = {
-    captain: { model: 'captain', h: 2.6, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['catch', 'steak'] },
-    anne: { model: 'anne', h: 2.5, happy: 'Wave', mad: 'No', idle: 'Idle', dishes: ['salmon', 'onigiri'] },
-    sharky: { model: 'sharky', h: 2.7, happy: 'Yes', mad: 'Punch', idle: 'Idle', dishes: ['tuna', 'steak'] },
-    crab: { model: 'crab', h: 1.6, bright: 1.8, happy: 'Dance', mad: 'No', idle: 'Idle', dishes: ['catch', 'onigiri'] },
-    octo: { model: 'octo', h: 2.2, bright: 1.6, happy: 'HitRecieve', mad: 'Bite_Front', idle: 'Flying', dishes: ['ramen', 'tuna'] }
+    gus: { name: 'Old Gus', model: 'captain', h: 2.6, hue: 200, sat: 1.1, head: 1.3, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['catch', 'steak'] },
+    marina: { name: 'Marina', model: 'anne', h: 2.5, hue: 150, sat: 1.3, head: 1.3, happy: 'Wave', mad: 'No', idle: 'Idle', dishes: ['salmon', 'onigiri'] },
+    seaking: { name: 'Sea King', model: 'sharky', h: 2.7, hue: 60, sat: 1.2, head: 1.25, crown: true, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['tuna', 'steak'] },
+    pinch: { name: 'Pinch', model: 'crab', h: 1.6, bright: 1.8, hue: 15, sat: 1.2, happy: 'Dance', mad: 'No', idle: 'Idle', dishes: ['catch', 'onigiri'] },
+    gill: { name: 'Gill', model: 'fishfolk', h: 2.3, hue: 160, sat: 1.3, head: 1.15, happy: 'Wave', mad: 'No', idle: 'Idle', dishes: ['ramen', 'catch'] },
+    inky: { name: 'Inky', squid: true, h: 2.6, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['ramen', 'tuna'] }
   };
+  const heads = []; // [bone, scale]: animations reset bone scale, so we re-apply it every frame
+  function findBone(root, re) { let b = null; root.traverse(n => { if (!b && n.isBone && re.test(n.name)) b = n; }); return b; }
+  function crown(parent, s) {
+    const c = grp(0, 0, 0, parent);
+    mk(cyl(0.42 * s, 0.38 * s, 0.22 * s, 8), 0xffd23c, 0, 0, 0, c, { m: { emissive: 0x4a3000 } });
+    for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; mk(cone(0.09 * s, 0.3 * s, 4), 0xffd23c, Math.cos(a) * 0.36 * s, 0.24 * s, Math.sin(a) * 0.36 * s, c, { m: { emissive: 0x4a3000 } }); mk(ico(0.06 * s), [0xff4f8a, 0x3fd0ff, 0x7dff8a][i % 3], Math.cos(a) * 0.4 * s, 0.02 * s, Math.sin(a) * 0.4 * s, c, { outline: false }); }
+    return c;
+  }
+  // Inky: a squid of our own. Tall mantle with fins, huge eyes, eight wiggly arms and two long tentacles.
+  function squid(h) {
+    const root = new THREE.Group(), body = grp(0, 0, 0, root), s = h / 2.6;
+    const PINK = 0xff7aa8, DEEP = 0xe0508a;
+    const prof = [[0.5, 0.65], [0.62, 0.8], [0.72, 1.1], [0.7, 1.5], [0.55, 2.0], [0.25, 2.45], [0, 2.6]].map(([x, y]) => new THREE.Vector2(x * s, y * s));
+    const mantle = mk(new THREE.LatheGeometry(prof, 9), PINK, 0, 0, 0, body);
+    [-1, 1].forEach(k => { const f = mk(cone(0.42 * s, 0.75 * s, 3), DEEP, k * 0.5 * s, 2.15 * s, 0, body, { outline: false }); f.rotation.z = k * 1.2; f.scale.z = 0.25; });
+    [[0.3, 1.9, 0.5], [-0.35, 1.6, 0.55], [0.45, 1.35, 0.45], [-0.2, 2.2, 0.35]].forEach(([x, y, z]) => mk(ico(0.08 * s), DEEP, x * s, y * s, z * s, body, { outline: false }));
+    const eyes = [-1, 1].map(k => { const e = grp(k * 0.33 * s, 1.0 * s, 0.55 * s, body);
+      mk(new THREE.SphereGeometry(0.26 * s, 10, 8), 0xffffff, 0, 0, 0, e).scale.set(0.9, 1.15, 0.6);
+      mk(new THREE.SphereGeometry(0.14 * s, 8, 6), INK, 0, -0.02 * s, 0.11 * s, e, { outline: false });
+      mk(new THREE.SphereGeometry(0.05 * s, 6, 4), 0xffffff, 0.05 * s, 0.06 * s, 0.21 * s, e, { outline: false }); return e; });
+    [-1, 1].forEach(k => mk(new THREE.SphereGeometry(0.1 * s, 6, 4), 0xff4f7a, k * 0.55 * s, 0.82 * s, 0.45 * s, body, { outline: false }).scale.set(1, 0.6, 0.4));
+    const mouth = mk(new THREE.TorusGeometry(0.1 * s, 0.03 * s, 3, 6, Math.PI), 0x7a1d2a, 0, 0.72 * s, 0.6 * s, body, { outline: false }); mouth.rotation.z = Math.PI;
+    const arms = [];
+    for (let i = 0; i < 10; i++) {
+      const long = i >= 8, a = (i / 8) * Math.PI * 2 + (long ? 0.4 + (i - 8) * Math.PI : 0.2);
+      let seg = grp(Math.cos(a) * 0.42 * s, 0.7 * s, Math.sin(a) * 0.42 * s, body); seg.rotation.y = -a + Math.PI / 2;
+      const chain = [], n = long ? 4 : 3, len = (long ? 0.45 : 0.32) * s;
+      for (let k = 0; k < n; k++) {
+        const r0 = (0.14 - k * 0.03) * s;
+        mk(cyl(Math.max(0.03 * s, r0 - 0.03 * s), r0, len, 5), PINK, 0, -len / 2, 0, seg);
+        chain.push(seg); const nx = grp(0, -len, 0, seg); seg = nx;
+      }
+      if (long) mk(ico(0.14 * s), DEEP, 0, 0, 0, seg).scale.set(1, 1.5, 0.7);
+      chain[0].rotation.x = 0.55; arms.push({ chain, ph: i * 0.8, long });
+    }
+    let mode = 'Idle', modeT = 0;
+    root.userData.play = (name) => { mode = name; modeT = 0; };
+    root.userData.update = (dt, t) => {
+      modeT += dt; if (mode !== 'Idle' && modeT > 1.2) mode = 'Idle';
+      const hop = mode === 'Yes' ? Math.abs(Math.sin(modeT * 8)) * 0.5 * s : 0;
+      body.position.y = 0.15 * s + Math.sin(t * 2) * 0.08 * s + hop;
+      body.rotation.y = mode === 'No' ? Math.sin(modeT * 14) * 0.4 : 0;
+      mantle.scale.set(1 + Math.sin(t * 2) * 0.03, 1 - Math.sin(t * 2) * 0.03, 1 + Math.sin(t * 2) * 0.03);
+      arms.forEach(A => A.chain.forEach((c, k) => {
+        const up = mode === 'Yes' ? -0.6 : 0;
+        if (k === 0) c.rotation.x = 0.55 + up + Math.sin(t * 3 + A.ph) * 0.15; else c.rotation.x = Math.sin(t * 3 + A.ph + k) * (A.long ? 0.45 : 0.3);
+      }));
+      eyes.forEach(e => { e.scale.y = (t * 0.7 + 1) % 4 < 0.12 ? 0.1 : 1; });
+      mouth.rotation.z = mode === 'No' ? 0 : Math.PI;
+    };
+    squids.push(root);
+    return root;
+  }
+  const squids = [];
   function actor(kindKey) {
-    const K = KIND[kindKey], g = M[K.model];
+    const K = KIND[kindKey];
+    if (K.squid) return squid(K.h);
+    const g = M[K.model];
     if (!g) return null;
-    const root = fit(toonify(g.scene, { gltf: true, bright: K.bright }), K.h);
+    const root = fit(toonify(g.scene, { gltf: true, bright: K.bright, hue: K.hue, sat: K.sat }), K.h);
+    const head = findBone(g.scene, /^head$/i) || findBone(g.scene, /head/i);
+    if (head && K.head) heads.push([head, K.head]);
+    if (head && K.crown) { root.updateMatrixWorld(true); const hs = Math.max(1e-4, new THREE.Vector3().setFromMatrixScale(head.matrixWorld).x), c = crown(head, 1); c.scale.setScalar(0.75 / hs); c.position.y = 0.62 / hs; }
     const mixer = new THREE.AnimationMixer(g.scene), acts = {};
     g.animations.forEach(a => { acts[a.name] = mixer.clipAction(a); });
     const play = (name, once) => {
@@ -386,7 +471,7 @@
   function servePlate(s) {
     s.plate.clear();
     const p = fit(toonify(copy('plate'), { gltf: true }), 0.75, 'w'); s.plate.add(p);
-    const m = DISHES[s.dish].model, f = fit(toonify(copy(m), { gltf: m.indexOf('food_') !== 0 }), 0.6, 'w'); f.position.y = 0.06; s.plate.add(f);
+    const m = DISHES[s.dish].model, f = fit(toonify(copy(m), { gltf: true }), 0.6, 'w'); f.position.y = 0.06; s.plate.add(f);
     s.plate.visible = true;
   }
   function island(x, z, s) {
@@ -411,14 +496,16 @@
     prop('barrel', 1.2, -3.4, 6.8, 0.3); prop('barrel', 1.2, -2.6, 7.6, 1.2); prop('bucket_fishes', 0.9, 3.4, 6.9, 0.5);
     prop('anchor', 1.6, 3.0, -9.0, 0.6, 'w'); prop('chest_gold', 1.0, -2.4, -10.0, -0.4);
     // dining tables with guests
-    table(-1.8, -4.4, [[Math.PI * 0.95, 'captain'], [Math.PI * 0.05, 'anne']], 1);
-    table(1.6, 1.6, [[Math.PI * 1.05, 'crab'], [-Math.PI * 0.05, 'sharky']], 2);
-    table(-0.6, -8.4, [[Math.PI * 0.5, 'octo']], 3);
+    table(-1.8, -4.4, [[Math.PI * 0.95, 'gus'], [Math.PI * 0.05, 'marina']], 1);
+    table(1.6, 1.6, [[Math.PI * 1.05, 'pinch'], [-Math.PI * 0.05, 'seaking']], 2);
+    table(-0.6, -8.4, [[Math.PI * 0.95, 'inky'], [Math.PI * 0.05, 'gill']], 3);
     // the chef, carrying a plate up and down the deck
-    if (M.chef) {
-      chef = fit(toonify(M.chef.scene, { gltf: true }), 2.7); boat.add(chef);
-      const mixer = new THREE.AnimationMixer(M.chef.scene); anims.push(mixer);
-      const clip = M.chef.animations.find(a => a.name === 'Walk_Carry') || M.chef.animations.find(a => a.name === 'Walk');
+    if (M.chefhat) {
+      // Chef Remy: Quaternius chef, our colours (his skin was authored near-black), bigger head
+      chef = fit(toonify(M.chefhat.scene, { gltf: true, mats: { Skin: 0xf2b48a, Band: 0xff4f4f, DarkClothes: 0x2ec4b6, Clothes: 0xffffff, Hat: 0xffffff, Moustache: 0x6a3a1a } }), 2.9); boat.add(chef);
+      const ch = findBone(M.chefhat.scene, /^head$/i); if (ch) heads.push([ch, 1.25]);
+      const mixer = new THREE.AnimationMixer(M.chefhat.scene); anims.push(mixer);
+      const clip = M.chefhat.animations.find(a => a.name === 'Walk_Carry') || M.chefhat.animations.find(a => a.name === 'Walk');
       if (clip) mixer.clipAction(clip).play();
       const tray = grp(0, 1.45, 0.55, chef);
       tray.add(fit(toonify(copy('plate'), { gltf: true }), 0.7, 'w'));
@@ -426,11 +513,9 @@
     }
     island(-70, -90, 1.3); island(85, -70, 1); island(30, -140, 1.6);
     const dock = fit(toonify(copy('dock'), { gltf: true }), 14, 'w'); dock.position.set(-58, -0.2, -78); dock.rotation.y = 0.6; scene.add(dock);
-    jumpers = ['fish_clownfish', 'fish_puffer', 'fish_tuna', 'fish_koi', 'fish_bluetang'].filter(n => M[n]).map(n => { const f = fit(toonify(M[n].scene), 1.4, 'w'); f.visible = false; scene.add(f); return f; });
+    jumpers = ['fish_clownfish', 'fish_puffer', 'fish_tuna', 'fish_koi', 'fish_bluetang'].filter(n => M[n]).map(n => { const f = fit(toonify(M[n].scene, { gltf: true, bright: 2.2 }), 1.4, 'w'); f.visible = false; scene.add(f); return f; });
     // a chunky gold coin with a $ face
-    coinProto = new THREE.Group();
-    const coin = mk(cyl(0.32, 0.32, 0.1, 10), 0xffd23c, 0, 0, 0, coinProto, { shadow: false, m: { emissive: 0x5a3a00 } }); coin.rotation.x = Math.PI / 2;
-    mk(cyl(0.2, 0.2, 0.12, 10), 0xffb000, 0, 0, 0, coinProto, { outline: false, shadow: false }).rotation.x = Math.PI / 2;
+    coinProto = M.coin ? fit(toonify(copy('coin'), { gltf: true, shadow: false, outline: false, mats: { Gold: 0xffd23c, Gold_Dark: 0xf0a020 } }), 0.6) : null;
     seats.forEach(s => {
       s.el = document.createElement('div'); s.el.className = 'bub';
       s.el.innerHTML = '<div class="think"><img alt=""></div><div class="bar"><i></i></div>';
@@ -476,7 +561,7 @@
     seats.forEach(s => {
       const d = DISHES[s.dish], el = document.createElement('div');
       el.className = 'tk' + (s === urgent ? ' urgent' : '') + (s === newOne ? ' new' : '');
-      el.innerHTML = `<span class="who">Table ${s.n}</span><img src="${d.src}" alt=""><span>${d.name}</span>`;
+      el.innerHTML = `<span class="who">${KIND[s.kind].name}</span><img src="${d.src}" alt=""><span>${d.name}</span>`;
       rail.appendChild(el);
     });
   }
@@ -535,6 +620,8 @@
     seaU.uT.value = t;
     boat.position.y = waveY(0, 1, t) * 0.6; boat.rotation.z = Math.sin(t * 0.9) * 0.025; boat.rotation.x = Math.cos(t * 0.7) * 0.015;
     anims.forEach(m => m.update(dt));
+    heads.forEach(([b, k]) => b.scale.setScalar(k));
+    squids.forEach(q => q.userData.update(dt, t));
     if (chef) { const w = Math.sin(t * 0.32); chef.position.set(3.0, DECK + 0.1, -1 + w * 7); chef.rotation.y = Math.cos(t * 0.32) > 0 ? 0 : Math.PI; }
     if (built) seats.forEach(s => {
       s.patience = Math.max(0, s.patience - dt * s.rate);
@@ -575,7 +662,7 @@
   }
   frame();
   window.__serve = () => $('serve').click();
-  window.__cam = (d, y, p) => { dist = d; yaw = y; pitch = p; auto = false; };
+  window.__cam = (d, y, p, tx, tz) => { dist = d; yaw = y; pitch = p; auto = false; if (tx !== undefined) { target.x = tx; target.z = tz; } };
   window.__chef = () => chef && chef.getWorldPosition(new THREE.Vector3()).toArray();
 })();
 </script>
