@@ -617,13 +617,21 @@
   function wants(gu, item) {
     let open = gu.orders.filter(o => !o.served);
     if (gu.role.courses && !gu.reg) open = open.slice(0, 1);
-    return open.find(o => item.live ? o.live : !o.live && o.recipe === item.recipe);
+    return open.find(o => item.live ? o.live : !o.live && fits(o.recipe, item.recipe));
+  }
+  // v4.2 fix: one plain fish on the grill plates as its named dish (Grilled Sardine...), but it is still a
+  // Catch of the Day: an "any fish" order takes any dish with that many fish, no sides, cooked the same way.
+  function fits(want, got) {
+    if (want === got) return true;
+    if (!want || !got || !want.anyFish) return false;
+    const n = Object.values(got.fish || {}).reduce((a, b) => a + b, 0) + (got.anyFish || 0);
+    return n === want.anyFish && !Object.keys(got.sides || {}).length && got.heat === want.heat;
   }
   function serve(gu, item) {
     const o = wants(gu, item), tb = gu.table;
     N.carry = N.carry.filter(x => x !== item); drawCarry();
     if (!o) {
-      if (gu.role.courses && !item.live && gu.orders.some(x => !x.served && x.recipe === item.recipe)) { N.carry.push(item); drawCarry(); sayFloat(gu, '"One course at a time!"', '#ffe9a8'); FR.sfx('bad'); return; }
+      if (gu.role.courses && !item.live && gu.orders.some(x => !x.served && fits(x.recipe, item.recipe))) { N.carry.push(item); drawCarry(); sayFloat(gu, '"One course at a time!"', '#ffe9a8'); FR.sfx('bad'); return; }
       if (gu.sp.id === 'mermaid' && (item.live || item.recipe.kind !== 'kelp')) {
         N.clean++; N.res.reviews.push(1); breakCombo('served a Mermaid fish');
         FR.sfx('bad'); burst(V(tb.at.x, tb.at.z), '💧', '#5bd1ff', 10); sayFloat(gu, 'FISH?! How dare you! ★', '#ff9c9c');

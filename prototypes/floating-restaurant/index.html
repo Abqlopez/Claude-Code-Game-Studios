@@ -1341,8 +1341,9 @@
     mix += ((mixT !== null ? mixT : night ? 1 : 0) - mix) * Math.min(1, dt * 1.2);
     dusk += (duskT - dusk) * Math.min(1, dt * 1.2);
     const skyBase = cLerp(DAY.sky, NIGHT.sky, mix), storm = new THREE.Color(0x141a26);
-    const sky = skyBase.clone().lerp(new THREE.Color(0xffae6b), dusk * 0.85).lerp(storm, weather.dark); // horizon (and fog)
-    skyU.uBot.value.copy(sky); skyU.uTop.value.copy(skyBase).lerp(new THREE.Color(0x5a3fd0), dusk * 0.9).lerp(storm, weather.dark);
+    const dayK = (1 - mix) * 0.6; // daytime: the look test's deep blue top and pale horizon, tinted by the area's sky
+    const sky = skyBase.clone().lerp(new THREE.Color(0xc4f2ff), dayK).lerp(new THREE.Color(0xffae6b), dusk * 0.85).lerp(storm, weather.dark); // horizon (and fog)
+    skyU.uBot.value.copy(sky); skyU.uTop.value.copy(skyBase).lerp(new THREE.Color(0x3fb0ff), dayK).lerp(new THREE.Color(0x5a3fd0), dusk * 0.9).lerp(storm, weather.dark);
     skyDome.position.copy(camera.position);
     weather.flash = Math.max(0, weather.flash - dt * 3);
     scene.background = sky; scene.fog.color.copy(sky);
