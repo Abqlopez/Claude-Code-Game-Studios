@@ -65,8 +65,65 @@
   const HAIR = [0x3a2a1a, 0xd9a520, 0x8a3a1a, 0x1a1a1a, 0xc8c0b0];
   const ROLE_BODY = { sailor: 0x3d7edb, foodie: 0xd9548f, pirate: 0x333333, family: 0x3f9e5a, influencer: 0x1fa3c4, critic: 0x6b7785, royal: 0x7b2d8e };
 
+  // ----- v4.2 look: our own guest kit (js/guests.js) in the toon style (js/toonkit.js) -----
+  // The game keeps moving simple stand-in parts (torso, head, arms, legs...) exactly as before;
+  // u.sync copies those moves onto the kit's character every frame. Our characters face +z and
+  // the game's face -z, so the model is turned round and the x and z turns are mirrored.
+  let GK = null;
+  const pickOne = a => a[Math.floor(Math.random() * a.length)];
+  function kitPerson(o) {
+    const T = window.FRToon;
+    GK = GK || window.makeGuestKit({ mk: T.mk, grp: T.grp, INK: T.INK, ramp: T.ramp });
+    const sp = o.species || 'human', role = o.role, kid = !!o.kid;
+    const spec = { species: sp, role: kid ? null : role, kid };
+    spec.skin = { seaking: 0x4fb5a5, seawitch: 0x7bc96f, octofolk: 0xa36bff, crabfolk: 0xff5d3c }[sp] || pickOne(GK.SKIN);
+    spec.shirt = spec.sleeve = o.body || ROLE_BODY[role] || 0x9fd0ff;
+    spec.pants = o.legs || (role === 'royal' ? 0x5a1d6e : 0x2b2140);
+    if (sp === 'human') { spec.hair = kid ? 'spiky' : pickOne(['short', 'long', 'bun', 'curly', 'spiky', 'short', 'bald']); spec.hairColor = pickOne(GK.HAIR); spec.lashes = spec.hair === 'long' || spec.hair === 'bun'; }
+    if (sp === 'mermaid') Object.assign(spec, { shirt: spec.skin, sleeve: spec.skin, hair: 'long', hairColor: pickOne(GK.HAIR), lashes: true, tail: pickOne([0x2ec4b6, 0x8a5ae0, 0xff6fae]), fin: 0x9cf0e0 });
+    if (sp === 'seawitch') Object.assign(spec, { shirt: 0x5a2a8a, sleeve: 0x5a2a8a, hair: 'long', hairColor: 0x2a1d14, lashes: true });
+    if (sp === 'seaking') Object.assign(spec, { shirt: 0x1f6a7a, sleeve: 0x1f6a7a, pants: 0x1d3f6a });
+    if (sp === 'octofolk') spec.lashes = Math.random() < 0.5;
+    if (o.regular === 'gus') Object.assign(spec, { role: null, skin: GK.SKIN[2], hair: 'short', hairColor: 0xc8c8d0, beard: 0xe0e0e8, bigBeard: true, captain: true, pipe: true, shirt: 0x24356a, sleeve: 0x24356a, pants: 0x2a2a3a });
+    if (o.regular === 'marina') Object.assign(spec, { role: null, skin: GK.SKIN[0], shirt: GK.SKIN[0], sleeve: GK.SKIN[0], hair: 'long', hairColor: 0xd23c2a, flowers: true, lashes: true, tail: 0x2ec4b6 });
+    if (o.celeb) spec.role = 'royal';
+    if (o.apron) Object.assign(spec, { apron: o.apron, hair: 'short', hairColor: pickOne(GK.HAIR) });
+    const model = GK.make(spec), rig = model.userData.rig;
+    const g = new THREE.Group(); g.rotation.order = 'YXZ'; boat.add(g);
+    const SC = 0.82, inner = new THREE.Group(); inner.rotation.y = Math.PI; inner.scale.setScalar(SC); g.add(inner); inner.add(model);
+    const P = () => new THREE.Object3D();
+    const u = { legs: [], arms: [P(), P()], tents: [], kind: 'legs', walkT: Math.random() * 6, bob: 0, torso: P(), head: P(), orb: model.userData.orb, phone: model.userData.phone };
+    if (sp === 'mermaid') { u.kind = 'tail'; u.tail = P(); }
+    else if (sp === 'octofolk') { u.kind = 'tents'; u.tents = rig.tents.map(ch => ch.map(() => P())); }
+    else if (sp === 'crabfolk') { u.kind = 'crab'; u.legs = rig.crabLegs.map(() => P()); }
+    else if (rig.legL) u.legs = [P(), P()];
+    else { u.kind = 'robe'; u.robe = P(); }
+    const base = {
+      armL: rig.armL.rotation.clone(), armR: rig.armR.rotation.clone(),
+      tents: rig.tents ? rig.tents.map(ch => ch.map(x => x.rotation.x)) : null,
+      crab: rig.crabLegs ? rig.crabLegs.map(l => l.rotation.x) : null,
+      tail: rig.tail ? rig.tail[0].rotation.clone() : null
+    };
+    const mirror = (dst, src, b) => dst.rotation.set(b.x - src.rotation.x, b.y + src.rotation.y, b.z - src.rotation.z);
+    u.sync = (t, m) => {
+      rig.body.rotation.set(-u.torso.rotation.x, 0, -u.torso.rotation.z);
+      rig.body.position.y = u.torso.position.y / SC;
+      rig.head.rotation.set(-u.head.rotation.x, u.head.rotation.y, -u.head.rotation.z);
+      mirror(rig.armR, u.arms[0], base.armR); mirror(rig.armL, u.arms[1], base.armL);
+      if (u.kind === 'legs' && rig.legL) { rig.legR.rotation.x = -u.legs[0].rotation.x; rig.legL.rotation.x = -u.legs[1].rotation.x; }
+      inner.position.y = m && m.sit && u.kind === 'legs' ? 0.1 : 0; // our hips sit a little lower than the old model's
+      if (u.kind === 'tents') u.tents.forEach((ch, i) => ch.forEach((px, k) => { rig.tents[i][k].rotation.x = base.tents[i][k] + (px.rotation.x - 0.15) * 0.7; }));
+      if (u.kind === 'crab') u.legs.forEach((px, i) => { rig.crabLegs[i].rotation.x = base.crab[i] + px.rotation.x; });
+      if (u.kind === 'tail' && base.tail) { rig.tail[0].rotation.x = base.tail.x - u.tail.rotation.x * 0.5; rig.tail[0].rotation.z = base.tail.z - u.tail.rotation.z; }
+      model.userData.face(0, t, m && (m.anim === 'angry' || m.anim === 'tap') ? 'mad' : 'ok');
+    };
+    g.userData = u;
+    return g;
+  }
+
   // look: { species, role (what they look like), kid, regular, staff color, celeb, size }
   function makePerson(o) {
+    if (window.makeGuestKit && window.FRToon) return kitPerson(o);
     const g = new THREE.Group(); g.rotation.order = 'YXZ'; boat.add(g);
     const sp = o.species || 'human', role = o.role, u = { legs: [], arms: [], tents: [], kind: 'legs', walkT: Math.random() * 6, bob: 0 };
     let skin = SKINS[Math.floor(Math.random() * SKINS.length)], body = o.body || ROLE_BODY[role] || 0x9fd0ff;
@@ -227,6 +284,7 @@
       case 'dash': u.arms[0].rotation.x = -sw * 1.6; u.arms[1].rotation.x = sw * 1.6; u.torso.rotation.x = -0.3; break;
     }
     g.position.y = floorAt(g.position.x) + (m.sit && u.kind === 'legs' ? -0.15 : m.sit ? 0.1 : 0) + hop;
+    if (u.sync) u.sync(t, m);
   }
 
   // ---------- built stations (3D models) ----------

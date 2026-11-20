@@ -6,6 +6,12 @@ tags: [roadmap, index]
 ## Done in v4.1
 See [[v4.1]]: the whole 2D game is now in 3D ([[Not Yet in 3D]] is all ticked).
 
+## Done in v4.2 (new look)
+- Every guest and the staff are built by our own guest kit (`js/guests.js`): the species and role outfits in [[Guests]], plus Old Gus and Marina. No guest carries a weapon (no trident, no staff: the Sea Witch carries a glowing lantern).
+- Toon look (`js/toonkit.js`): flat three-tone shading on everything and ink outlines on guests and the chef.
+- Look test with every guest on one raft: `prototypes/floating-restaurant-style-spike/`.
+- Still to do: the chef in the new style (he is tied into the cutscenes), the faceted cartoon sea, outlines on props.
+
 ## Next ideas
 1. ~~**Booking after the morning** + a **"Catch of the Day"** recipe~~ Done in v4.2: see [[Catch of the Day]]. (Guests are already booked in the afternoon, after the morning, so only the recipe was missing.)
 2. **The Deep Trench**: a third sea (teased on the chart), with new fish, baits and lures.

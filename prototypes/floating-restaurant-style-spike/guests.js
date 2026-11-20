@@ -169,7 +169,8 @@ window.makeGuestKit = function (kit) {
     p.torso = grp(0, 0.5, 0, p.hips);
     mk(sph(0.62, 14, 10), o.skin, 0, 0, 0, p.torso).scale.set(1.25, 0.85, 1);
     mk(sph(0.5, 12, 9), o.belly || 0xffd2a0, 0, -0.05, 0.22, p.torso, { outline: false }).scale.set(1.1, 0.75, 0.8);
-    [-1, 1].forEach(k => { for (let i = 0; i < 3; i++) { const l = grp(k * 0.55, 0.25, (i - 1) * 0.28, p.hips); l.rotation.z = k * 0.9; mk(limb(0.06, 0.38), o.skin, 0, 0, 0, l); } });
+    p.crabLegs = [];
+    [-1, 1].forEach(k => { for (let i = 0; i < 3; i++) { const l = grp(k * 0.55, 0.25, (i - 1) * 0.28, p.hips); l.rotation.z = k * 0.9; mk(limb(0.06, 0.38), o.skin, 0, 0, 0, l); p.crabLegs.push(l); } });
     // the "head" is the eye-stalk cluster on top of the shell
     p.head = grp(0, 0.5, 0.2, p.torso); p.R = 0.45;
     p.face = { eyes: [], brows: [] };
@@ -199,12 +200,12 @@ window.makeGuestKit = function (kit) {
   }
 
   // ---------- role outfits (work on any species: they hang off headTop, face, torso and hands) ----------
-  function sailorCap(c, band) { const g = grp(0, 0, 0, c.p.headTop); mk(cyl(0.36, 0.42, 0.22, 12), 0xffffff, 0, 0.06, 0, g); mk(torus(0.42, 0.06, 5, 14), 0xffffff, 0, -0.04, 0, g).rotation.x = Math.PI / 2; mk(torus(0.395, 0.03, 4, 14), band || 0x2f5fd6, 0, 0.02, 0, g, { outline: false }).rotation.x = Math.PI / 2; g.rotation.x = -0.15; return g; }
-  function captainHat(c) { const g = grp(0, 0.02, 0, c.p.headTop); mk(cyl(0.5, 0.42, 0.24, 12), 0xffffff, 0, 0.1, -0.03, g); mk(cyl(0.43, 0.43, 0.08, 12), 0x1d2440, 0, -0.02, 0, g); const v = mk(cyl(0.3, 0.3, 0.04, 10, 1), 0x1d2440, 0, -0.06, 0.35, g); v.scale.z = 0.6; mk(sph(0.07, 6, 5), GOLD, 0, 0.06, 0.43, g, { outline: false, m: GOLDE }); return g; }
-  function beret(c, color) { const g = grp(0.08, 0.02, -0.02, c.p.headTop); const b = mk(sph(0.45, 12, 8), color, 0, 0.05, 0, g); b.scale.set(1.1, 0.35, 1.05); mk(cyl(0.03, 0.04, 0.1, 6), color, 0, 0.21, 0, g, { outline: false }); g.rotation.z = -0.2; return g; }
-  function tricorn(c) { const g = grp(0, 0.04, 0, c.p.headTop); const t = mk(cyl(0.62, 0.66, 0.24, 3), 0x2a2240, 0, 0.04, 0, g); t.rotation.y = Math.PI; mk(torus(0.6, 0.035, 4, 3), GOLD, 0, -0.08, 0, g, { outline: false }).rotation.set(Math.PI / 2, 0, Math.PI / 2); mk(sph(0.3, 10, 8), 0x2a2240, 0, 0.15, 0, g).scale.set(1, 0.7, 1); return g; }
-  function sunHat(c) { const g = grp(0, 0.02, 0, c.p.headTop); mk(cyl(0.88, 0.88, 0.05, 16), 0xf2d38a, 0, -0.02, 0, g); mk(cyl(0.36, 0.42, 0.26, 12), 0xf2d38a, 0, 0.1, 0, g); mk(cyl(0.425, 0.425, 0.08, 12), 0xff6f91, 0, 0.0, 0, g, { outline: false }); g.rotation.x = -0.12; return g; }
-  function fedora(c) { const g = grp(0, 0.04, 0, c.p.headTop); mk(cyl(0.68, 0.68, 0.05, 14), 0x6a4a2a, 0, -0.02, 0, g); mk(cyl(0.34, 0.4, 0.32, 10), 0x6a4a2a, 0, 0.14, 0, g); mk(cyl(0.405, 0.405, 0.08, 10), 0x2a1d14, 0, 0.02, 0, g, { outline: false }); return g; }
+  function sailorCap(c, band) { if (c.hatTaken) return; const g = grp(0, 0, 0, c.p.headTop); mk(cyl(0.36, 0.42, 0.22, 12), 0xffffff, 0, 0.06, 0, g); mk(torus(0.42, 0.06, 5, 14), 0xffffff, 0, -0.04, 0, g).rotation.x = Math.PI / 2; mk(torus(0.395, 0.03, 4, 14), band || 0x2f5fd6, 0, 0.02, 0, g, { outline: false }).rotation.x = Math.PI / 2; g.rotation.x = -0.15; return g; }
+  function captainHat(c) { if (c.hatTaken) return; const g = grp(0, 0.02, 0, c.p.headTop); mk(cyl(0.5, 0.42, 0.24, 12), 0xffffff, 0, 0.1, -0.03, g); mk(cyl(0.43, 0.43, 0.08, 12), 0x1d2440, 0, -0.02, 0, g); const v = mk(cyl(0.3, 0.3, 0.04, 10, 1), 0x1d2440, 0, -0.06, 0.35, g); v.scale.z = 0.6; mk(sph(0.07, 6, 5), GOLD, 0, 0.06, 0.43, g, { outline: false, m: GOLDE }); return g; }
+  function beret(c, color) { if (c.hatTaken) return; const g = grp(0.08, 0.02, -0.02, c.p.headTop); const b = mk(sph(0.45, 12, 8), color, 0, 0.05, 0, g); b.scale.set(1.1, 0.35, 1.05); mk(cyl(0.03, 0.04, 0.1, 6), color, 0, 0.21, 0, g, { outline: false }); g.rotation.z = -0.2; return g; }
+  function tricorn(c) { if (c.hatTaken) return; const g = grp(0, 0.04, 0, c.p.headTop); const t = mk(cyl(0.62, 0.66, 0.24, 3), 0x2a2240, 0, 0.04, 0, g); t.rotation.y = Math.PI; mk(torus(0.6, 0.035, 4, 3), GOLD, 0, -0.08, 0, g, { outline: false }).rotation.set(Math.PI / 2, 0, Math.PI / 2); mk(sph(0.3, 10, 8), 0x2a2240, 0, 0.15, 0, g).scale.set(1, 0.7, 1); return g; }
+  function sunHat(c) { if (c.hatTaken) return; const g = grp(0, 0.02, 0, c.p.headTop); mk(cyl(0.88, 0.88, 0.05, 16), 0xf2d38a, 0, -0.02, 0, g); mk(cyl(0.36, 0.42, 0.26, 12), 0xf2d38a, 0, 0.1, 0, g); mk(cyl(0.425, 0.425, 0.08, 12), 0xff6f91, 0, 0.0, 0, g, { outline: false }); g.rotation.x = -0.12; return g; }
+  function fedora(c) { if (c.hatTaken) return; const g = grp(0, 0.04, 0, c.p.headTop); mk(cyl(0.68, 0.68, 0.05, 14), 0x6a4a2a, 0, -0.02, 0, g); mk(cyl(0.34, 0.4, 0.32, 10), 0x6a4a2a, 0, 0.14, 0, g); mk(cyl(0.405, 0.405, 0.08, 10), 0x2a1d14, 0, 0.02, 0, g, { outline: false }); return g; }
   function crown(c, s) {
     s = s || 1; const g = grp(0, 0.04, 0, c.p.headTop);
     mk(cyl(0.34 * s, 0.32 * s, 0.2 * s, 10), GOLD, 0, 0.08 * s, 0, g, { m: GOLDE });
@@ -235,7 +236,7 @@ window.makeGuestKit = function (kit) {
     family: c => { sunHat(c); },
     influencer: c => { shades(c, 0xff6fae, true); phone(c); },
     critic: c => { fedora(c); shades(c, 0x1d1430); notepad(c); },
-    royal: c => { crown(c); cape(c, 0x8a3fd0, 0xffffff); },
+    royal: c => { if (!c.hatTaken) crown(c); cape(c, 0x8a3fd0, 0xffffff); },
     chef: c => { toque(c); neckerchief(c, 0xff4f4f); buttons(c, 0x1d1430); mustache(c, 0x5a3420); }
   };
   function make(spec) {
@@ -248,8 +249,8 @@ window.makeGuestKit = function (kit) {
       if (sp === 'mermaid') { mermaidTail(c, spec.tail || 0x2ec4b6, spec.fin || 0x8af0e0); if (!spec.role || spec.role === 'foodie') shellTop(c); }
       if (robed) robe(c, sp === 'seawitch' ? 0x5a2a8a : 0x8a3fd0, sp === 'seawitch' ? 0x7dff8a : 0xffffff);
       hair(c, spec.hair, spec.hairColor !== undefined ? spec.hairColor : HAIR[0]);
-      if (sp === 'seaking') { beard(c, 0xe8f0f0, true); crown(c, 1.15); cape(c, 0xd23c2a, 0xffd23c); }
-      if (sp === 'seawitch') { witchHat(c); lantern(c); }
+      if (sp === 'seaking') { beard(c, 0xe8f0f0, true); crown(c, 1.15); cape(c, 0xd23c2a, 0xffd23c); c.hatTaken = true; }
+      if (sp === 'seawitch') { witchHat(c); lantern(c); c.hatTaken = true; }
     } else if (sp === 'octofolk') octoBody(c, { skin: skin, spot: spec.spot, lashes: spec.lashes });
     else if (sp === 'crabfolk') crabBody(c, { skin: skin, belly: spec.belly });
     if (spec.beard) beard(c, spec.beard, spec.bigBeard);
@@ -258,6 +259,7 @@ window.makeGuestKit = function (kit) {
     if (spec.captain) captainHat(c);
     if (spec.pipe) pipe(c);
     if (spec.flowers) flowers(c);
+    if (spec.apron && c.p.torso) { const ap = mk(box(0.5, 0.5, 0.06), spec.apron, 0, 0.18, 0.36, c.p.torso); ap.rotation.x = -0.12; }
     if (spec.scale) root.scale.setScalar(spec.scale);
     // ---------- animation: everything is moved by hand, no skeletons ----------
     const p = c.p, F = p.face;
@@ -299,6 +301,15 @@ window.makeGuestKit = function (kit) {
       F.eyes.forEach(e => { e.scale.y = blink ? 0.12 : 1; });
       F.brows.forEach((b, i) => { b.rotation.z = mad ? (i ? 0.45 : -0.45) : (i ? -0.1 : 0.1); });
       F.mouth.rotation.z = mad || mode === 'No' ? 0 : Math.PI;
+      if (c.orb) c.orb.scale.setScalar(1 + Math.sin(tt * 3) * 0.1);
+    };
+    // External mode: the game moves the body (see the real game's service3d.js); we only run the face.
+    ud.rig = p; ud.orb = c.orb; ud.phone = c.phone;
+    ud.face = (dt, t, faceMood) => {
+      const tt = t + ph, mad = faceMood === 'mad';
+      F.eyes.forEach(e => { e.scale.y = (tt * 0.8) % 4 < 0.12 ? 0.12 : 1; });
+      F.brows.forEach((b, i) => { b.rotation.z = mad ? (i ? 0.45 : -0.45) : (i ? -0.1 : 0.1); });
+      F.mouth.rotation.z = mad ? 0 : Math.PI;
       if (c.orb) c.orb.scale.setScalar(1 + Math.sin(tt * 3) * 0.1);
     };
     ud.name = spec.name || '';

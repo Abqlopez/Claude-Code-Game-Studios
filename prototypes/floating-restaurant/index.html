@@ -320,6 +320,8 @@
   <button id="sGo" type="button">Sail back to the restaurant ▶</button>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/toonkit.js"></script>
+<script src="js/guests.js"></script>
 <script src="js/data.js"></script>
 <script src="js/state.js"></script>
 <script src="js/fishart.js"></script>
@@ -1259,6 +1261,8 @@
   let last = performance.now(), t = 0, walkT = 0, normalT = 0, walkW = 0, actT = 0, react = null;
   API.react = (kind, dur) => { react = { kind, t: 0, dur: dur || 0.9 }; };
   API.sunRise = k => { if (k === null) { sunDisc.visible = false; return; } sunDisc.visible = true; sunDisc.position.set(60, -14 + k * 40, -170); };
+  let toonT = 0;
+  if (window.FRToon) FRToon.outlineAll(chef, 0.03); // v4.2: the chef gets the same ink line as the guests
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000) * ((window.FR3D && window.FR3D.timeScale) || 1); last = now; t += dt;
 
@@ -1418,6 +1422,7 @@
     sun.position.set(wp.x + 18, 34, wp.z + 12); sun.target.position.copy(wp);
 
     checkPerf(dt);
+    if (window.FRToon) { toonT -= 1; if (toonT <= 0) { FRToon.toonifyScene(scene); toonT = 60; } FRToon.syncLive(); } // v4.2 toon look
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
