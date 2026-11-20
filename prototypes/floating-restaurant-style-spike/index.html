@@ -93,7 +93,7 @@
 <div id="rail" aria-label="Orders"></div>
 <button id="serve" type="button">SERVE!<small>serves the most impatient guest</small></button>
 <div id="side">
-  <div class="note"><b>Look test 6</b>Every guest is ours now, built to the notes in Guests.md. Tap Meet the guests to see them all. Drag to turn, scroll or pinch to zoom.</div>
+  <div class="note"><b>Look test 7</b>Guests walk aboard and wave, then jump for joy when you serve them. Tap Meet the guests to see them all. Drag to turn, scroll or pinch to zoom.</div>
   <div class="row">
     <button id="tOutline" type="button">Outlines: on</button>
     <button id="tTime" type="button" class="alt">Sunset</button>
@@ -398,7 +398,12 @@
       const a = actor(kind); if (!a) return;
       a.position.set(gx * 0.92, 0, gz * 0.92); a.rotation.y = Math.atan2(-gx, -gz); t.add(a);
       const plate = new THREE.Group(); plate.position.set(Math.cos(ang) * 0.7, top, Math.sin(ang) * 0.7); plate.visible = false; t.add(plate);
-      seats.push({ g: a, t, kind, plate, patience: rnd(0.45, 1), rate: rnd(0.045, 0.075), dish: pick(KIND[kind].dishes), n, mad: false });
+      // every guest starts at the gangplank and walks in (see the loop)
+      const door = new THREE.Vector3(3.4 - x, 0, 0.9 - z);
+      const S = { g: a, t, kind, plate, patience: 1, rate: rnd(0.045, 0.075), dish: pick(KIND[kind].dishes), n, mad: false,
+        seat: a.position.clone(), face: a.rotation.y, door, state: 'wait', delay: 0.6 + seats.length * 1.4 };
+      a.visible = false; a.position.copy(door);
+      seats.push(S);
     });
   }
   function servePlate(s) {
@@ -493,8 +498,9 @@
   function drawRail(newOne) {
     if (!seats.length) return;
     rail.innerHTML = '';
-    const urgent = seats.reduce((a, b) => (b.patience < a.patience ? b : a));
-    seats.forEach(s => {
+    const sat = seats.filter(s => s.state === 'seated'); if (!sat.length) { rail.innerHTML = ''; return; }
+    const urgent = sat.reduce((a, b) => (b.patience < a.patience ? b : a));
+    sat.forEach(s => {
       const d = DISHES[s.dish], el = document.createElement('div');
       el.className = 'tk' + (s === urgent ? ' urgent' : '') + (s === newOne ? ' new' : '');
       el.innerHTML = `<span class="who">${KIND[s.kind].name}</span><img src="${d.src}" alt=""><span>${d.name}</span>`;
@@ -509,11 +515,11 @@
     if (tip) setTimeout(() => pop(s.g, s.patience > 0.85 ? 'PERFECT!' : 'TIP!', 'heart', 4.8), 220);
     setTimeout(() => addCash(pay + tip), 450);
     servePlate(s); s.eatT = 3;
-    s.g.userData.play(Math.random() < 0.5 ? 'Yes' : 'Wave'); s.mad = false;
+    s.g.userData.play('Yes'); s.mad = false; // everyone jumps for joy when the food lands
     s.patience = 1; s.dish = pick(KIND[s.kind].dishes);
     drawRail(s);
   }
-  $('serve').addEventListener('click', () => { if (seats.length) serve(seats.reduce((a, b) => (b.patience < a.patience ? b : a))); });
+  $('serve').addEventListener('click', () => { const sat = seats.filter(s => s.state === 'seated'); if (sat.length) serve(sat.reduce((a, b) => (b.patience < a.patience ? b : a))); });
   addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); $('serve').click(); } });
 
   // ================= "Meet the guests": every species and role on a raft behind the boat =================
@@ -607,11 +613,21 @@
     chars.forEach(c => c.userData.update(dt, t));
     if (chef) { const w = Math.sin(t * 0.32); chef.position.set(3.0, DECK + 0.1, -1 + w * 7); chef.rotation.y = Math.cos(t * 0.32) > 0 ? 0 : Math.PI; }
     if (built) seats.forEach(s => {
-      s.patience = Math.max(0, s.patience - dt * s.rate);
-      s.g.userData.setMood(s.patience); if (s.patience < 0.3 && !s.mad) { s.mad = true; }
-      if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); s.g.userData.play('No'); s.patience = 1; s.mad = false; s.dish = pick(KIND[s.kind].dishes); drawRail(s); }
+      const ud = s.g.userData, walkTo = (to, speed) => {
+        const d = to.clone().sub(s.g.position); d.y = 0; const L = d.length();
+        if (L < 0.08) return true;
+        s.g.position.addScaledVector(d, Math.min(1, speed * dt / L)); s.g.rotation.y = Math.atan2(d.x, d.z); return false;
+      };
+      if (s.state === 'wait') { s.delay -= dt; if (s.delay <= 0) { s.state = 'in'; s.g.visible = true; ud.walk = true; ud.setMood(1); } }
+      else if (s.state === 'in') { if (walkTo(s.seat, 2.4)) { s.g.position.copy(s.seat); s.g.rotation.y = s.face; ud.walk = false; ud.play('Wave'); s.state = 'seated'; s.patience = 1; drawRail(s); } }
+      else if (s.state === 'out') { if (walkTo(s.door, 2.8)) { s.g.visible = false; ud.walk = false; s.state = 'wait'; s.delay = 1.2; s.dish = pick(KIND[s.kind].dishes); } }
+      else {
+        s.patience = Math.max(0, s.patience - dt * s.rate);
+        ud.setMood(s.patience); if (s.patience < 0.3 && !s.mad) { s.mad = true; }
+        if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); ud.play('No'); s.mad = false; s.state = 'out'; ud.walk = true; s.plate.visible = false; ud.setMood(1); drawRail(); }
+      }
       if (s.eatT > 0) { s.eatT -= dt; if (s.eatT <= 0) s.plate.visible = false; }
-      const p = meet ? null : toScreen(s.g, 3.6);
+      const p = meet || s.state !== 'seated' ? null : toScreen(s.g, 3.6);
       if (p) {
         s.el.hidden = false; s.el.style.left = p[0] + 'px'; s.el.style.top = p[1] + 'px';
         const img = s.el.querySelector('img'); if (img.dataset.d !== s.dish) { img.src = DISHES[s.dish].src; img.dataset.d = s.dish; }
