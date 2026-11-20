@@ -960,6 +960,7 @@
     A.inputLocked = true; A.nightFight = true; A.chef.rotation.y = Math.PI / 2;
     N.fight = new A.Fight(id, { gear: 'light', baitMatch: FR.tackleFits(id, tkl), lure: tkl && tkl.kind === 'lure' ? tkl : null, onDone: res => {
       N.fight = null; A.inputLocked = false; A.nightFight = false; A.act = null;
+      pressQ = false; rodWait = performance.now() + 700; // v4.2 fix: the last reel tap must not cast again; you press to fish again
       const others = N.guests.filter(g => g.state === 'waitfood');
       if (!res.caught) { FR.sfx('bad'); toast(res.msg + (tk ? ' The whole deck groans.' : ''), '#ff9c9c'); A.react('sad', 1); if (tk) others.forEach(g => { g.patience = Math.max(0.05, g.patience - 0.08); }); return; }
       const j = FR.logCatch(id, 'normal');
@@ -1039,6 +1040,7 @@
       const live = tickets().find(o => o.live && !o.claimed && o.guest && o.guest.state === 'waitfood');
       if (live && !room()) return { text: 'Your hands are full' };
       if (!live && S().tank.length >= FR.tankCap()) return { text: 'The fish tank is full' };
+      if (performance.now() < rodWait) return { text: 'Line in. Catch your breath...' };
       return { text: live ? 'Fish for the Catch of the Moment!' : 'Cast a line (night fish for the tank)', press: () => startLive(live || null) };
     }
     // the sushi counter: no-cook dishes made here are always Perfect
@@ -1086,7 +1088,7 @@
   function clearTable(tb) { const n = Math.min(tb.dirty, C.carryMax - N.carry.length); tb.dirty -= n; for (let i = 0; i < n; i++) N.carry.push({ kind: 'plate' }); tb.food.splice(0, n); if (!tb.dirty) tb.food = []; drawTableFood(tb); drawCarry(); FR.sfx('blip'); }
 
   // ---------- input: tap vs hold ----------
-  let pressQ = false, held = false;
+  let pressQ = false, held = false, rodWait = 0;
   addEventListener('keydown', e => {
     if (A.mode !== 'night' || !N) return;
     if (choiceOpts) { const n = /^Digit([1-9])$/.exec(e.code); if (n && choiceOpts[Number(n[1]) - 1]) { e.preventDefault(); choiceOpts[Number(n[1]) - 1](); } return; }
