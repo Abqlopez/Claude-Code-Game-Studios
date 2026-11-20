@@ -399,9 +399,13 @@
       a.position.set(gx * 0.92, 0, gz * 0.92); a.rotation.y = Math.atan2(-gx, -gz); t.add(a);
       const plate = new THREE.Group(); plate.position.set(Math.cos(ang) * 0.7, top, Math.sin(ang) * 0.7); plate.visible = false; t.add(plate);
       // every guest starts at the gangplank and walks in (see the loop)
-      const door = new THREE.Vector3(3.4 - x, 0, 0.9 - z);
+      // Route around the tables: up the side aisle, along the gap beside this table, then in to the seat.
+      // Points are in boat space, turned into this table's space.
+      const AISLE = 3.9, lane = z + 1.95, L = (wx, wz) => new THREE.Vector3(wx - x, 0, wz - z);
+      const seat = a.position.clone(), door = L(3.4, 0.9);
+      const route = [L(AISLE, 0.9), L(AISLE, lane), L(x + seat.x, lane), seat];
       const S = { g: a, t, kind, plate, patience: 1, rate: rnd(0.045, 0.075), dish: pick(KIND[kind].dishes), n, mad: false,
-        seat: a.position.clone(), face: a.rotation.y, door, state: 'wait', delay: 0.6 + seats.length * 1.4 };
+        seat, face: a.rotation.y, door, route, leg: 0, state: 'wait', delay: 0.6 + seats.length * 1.4 };
       a.visible = false; a.position.copy(door);
       seats.push(S);
     });
@@ -618,13 +622,13 @@
         if (L < 0.08) return true;
         s.g.position.addScaledVector(d, Math.min(1, speed * dt / L)); s.g.rotation.y = Math.atan2(d.x, d.z); return false;
       };
-      if (s.state === 'wait') { s.delay -= dt; if (s.delay <= 0) { s.state = 'in'; s.g.visible = true; ud.walk = true; ud.setMood(1); } }
-      else if (s.state === 'in') { if (walkTo(s.seat, 2.4)) { s.g.position.copy(s.seat); s.g.rotation.y = s.face; ud.walk = false; ud.play('Wave'); s.state = 'seated'; s.patience = 1; drawRail(s); } }
-      else if (s.state === 'out') { if (walkTo(s.door, 2.8)) { s.g.visible = false; ud.walk = false; s.state = 'wait'; s.delay = 1.2; s.dish = pick(KIND[s.kind].dishes); } }
+      if (s.state === 'wait') { s.delay -= dt; if (s.delay <= 0) { s.state = 'in'; s.leg = 0; s.g.visible = true; ud.walk = true; ud.setMood(1); } }
+      else if (s.state === 'in') { if (walkTo(s.route[s.leg], 2.4) && ++s.leg >= s.route.length) { s.g.position.copy(s.seat); s.g.rotation.y = s.face; ud.walk = false; ud.play('Wave'); s.state = 'seated'; s.patience = 1; drawRail(s); } }
+      else if (s.state === 'out') { const back = s.route.length - 2 - s.leg; if (walkTo(back >= 0 ? s.route[back] : s.door, 2.8) && ++s.leg > s.route.length - 1) { s.g.visible = false; ud.walk = false; s.state = 'wait'; s.delay = 1.2; s.dish = pick(KIND[s.kind].dishes); } }
       else {
         s.patience = Math.max(0, s.patience - dt * s.rate);
         ud.setMood(s.patience); if (s.patience < 0.3 && !s.mad) { s.mad = true; }
-        if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); ud.play('No'); s.mad = false; s.state = 'out'; ud.walk = true; s.plate.visible = false; ud.setMood(1); drawRail(); }
+        if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); ud.play('No'); s.mad = false; s.state = 'out'; s.leg = 0; ud.walk = true; s.plate.visible = false; ud.setMood(1); drawRail(); }
       }
       if (s.eatT > 0) { s.eatT -= dt; if (s.eatT <= 0) s.plate.visible = false; }
       const p = meet || s.state !== 'seated' ? null : toScreen(s.g, 3.6);
