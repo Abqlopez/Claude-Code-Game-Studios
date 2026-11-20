@@ -10,7 +10,10 @@ See [[v4.1]]: the whole 2D game is now in 3D ([[Not Yet in 3D]] is all ticked).
 - Every guest and the staff are built by our own guest kit (`js/guests.js`): the species and role outfits in [[Guests]], plus Old Gus and Marina. No guest carries a weapon (no trident, no staff: the Sea Witch carries a glowing lantern).
 - Toon look (`js/toonkit.js`): flat three-tone shading on everything and ink outlines on guests and the chef.
 - Look test with every guest on one raft: `prototypes/floating-restaurant-style-spike/`.
-- Still to do: the chef in the new style (he is tied into the cutscenes), the faceted cartoon sea, outlines on props.
+- The chef in the new style: the old chef parts stay as the rig the cutscenes pose, and the new chef copies them (toque, nightcap, sitting, yawning all still work).
+- Cartoon sea: the same waves, drawn in three flat tones with white wave streaks; day, night and storm colours unchanged.
+- Ink outlines on props too (anything bigger than a cup).
+- Watch: outlines double the number of things drawn (about 2,700 at a busy dinner). If phones struggle, raise the size limit in `outlineAll`.
 
 ## Next ideas
 1. ~~**Booking after the morning** + a **"Catch of the Day"** recipe~~ Done in v4.2: see [[Catch of the Day]]. (Guests are already booked in the afternoon, after the morning, so only the recipe was missing.)

@@ -413,7 +413,17 @@
     sh.uniforms.uTime = seaTime;
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>',
       'vec3 transformed = vec3(position);\n vec4 wpos = modelMatrix * vec4(position, 1.0);\n' +
-      'transformed.y += sin(wpos.x * 0.16 + uTime * 1.0) * 0.32 + cos(wpos.z * 0.2 + uTime * 0.75) * 0.28 + sin((wpos.x + wpos.z) * 0.45 + uTime * 1.6) * 0.07;');
+      'transformed.y += sin(wpos.x * 0.16 + uTime * 1.0) * 0.32 + cos(wpos.z * 0.2 + uTime * 0.75) * 0.28 + sin((wpos.x + wpos.z) * 0.45 + uTime * 1.6) * 0.07;\n vSeaW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.vertexShader = 'varying vec3 vSeaW;\n' + sh.vertexShader;
+    // v4.2 cartoon sea: the lit colour is snapped to three flat tones of the water colour, plus little white wave streaks
+    sh.fragmentShader = 'uniform float uTime;\nvarying vec3 vSeaW;\n' + sh.fragmentShader.replace('#include <tonemapping_fragment>',
+      'float seaBase = max(0.001, dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)));\n' +
+      'float seaL = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)) / seaBase;\n' +
+      'vec3 seaC = seaL > 1.0 ? diffuseColor.rgb * 1.4 : (seaL > 0.72 ? diffuseColor.rgb * 1.1 : diffuseColor.rgb * 0.8);\n' +
+      'seaC *= clamp(dot(gl_FragColor.rgb, vec3(0.333)) / max(0.001, dot(seaC, vec3(0.333))) * 1.6, 0.45, 1.0); // keeps night dark\n' +
+      'float seaS = sin(vSeaW.x * 0.9 + sin(vSeaW.z * 0.4 + uTime) * 2.5 + uTime * 1.5) * sin(vSeaW.z * 0.7 - uTime);\n' +
+      'seaC = mix(seaC, vec3(1.0), step(0.94, seaS) * 0.6);\n' +
+      'gl_FragColor.rgb = seaC;\n#include <tonemapping_fragment>');
   };
   const waveAt = (x, z, t) => Math.sin(x * 0.16 + t * 1.0) * 0.32 + Math.cos(z * 0.2 + t * 0.75) * 0.28 + Math.sin((x + z) * 0.45 + t * 1.6) * 0.07;
   // foam hugging the hull
@@ -1071,6 +1081,33 @@
   cyl(0.07, 0.07, 0.16, M(0x2a2a30, { metalness: 0.5 }), 0.06, 0.45, 0, rod, 10).rotation.z = Math.PI / 2;
   const rodTip = new THREE.Object3D(); rodTip.position.set(0, 3.3, 0); rod.add(rodTip);
   chef.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  // v4.2: the chef in the new style. The parts above stay as the rig that the game and the cutscenes
+  // pose; their meshes are hidden and our kit chef (js/guests.js) copies their moves every frame.
+  // The rig faces -z and the kit faces +z, so the kit is turned round and x/z turns are mirrored.
+  let kitChef = null;
+  if (window.makeGuestKit && window.FRToon) {
+    const keep = new Set(); rod.traverse(o => keep.add(o)); hands.traverse(o => keep.add(o));
+    chef.traverse(o => { if (o.isMesh && !keep.has(o)) o.visible = false; });
+    const GKc = makeGuestKit({ mk: FRToon.mk, grp: FRToon.grp, INK: FRToon.INK, ramp: FRToon.ramp });
+    const model = GKc.make({ species: 'human', role: 'chef', skin: 0xf2b48a, hair: 'short', hairColor: 0x5a3420, shirt: 0xffffff, sleeve: 0xffffff, pants: 0x2b2140, shoes: 0x1a1426 });
+    const inner = new THREE.Group(); inner.rotation.y = Math.PI; inner.add(model); chef.add(inner);
+    const rig = model.userData.rig, kitToque = rig.headTop.children[0];
+    const capTex = canvasTex(64, 64, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#fff3d6' : '#3b6fd9'; g.fillRect(0, i * 8, w, 8); } });
+    const kitCap = FRToon.grp(0, -0.02, 0, rig.headTop); kitCap.visible = false;
+    FRToon.mk(new THREE.ConeGeometry(0.5, 1.1, 12), 0, -0.12, 0.42, -0.05, kitCap, { mat: new THREE.MeshToonMaterial({ map: capTex, gradientMap: FRToon.ramp }) }).rotation.z = 0.7;
+    FRToon.mk(new THREE.SphereGeometry(0.13, 10, 8), 0xffffff, -0.62, 0.75, -0.05, kitCap);
+    const base = { armL: rig.armL.rotation.clone(), armR: rig.armR.rotation.clone() }, mouth0 = rig.face.mouth.scale.clone();
+    const mirror = (dst, src, b) => dst.rotation.set(b.x - src.rotation.x, b.y + src.rotation.y, b.z - src.rotation.z);
+    kitChef = { sync(t) {
+      rig.body.rotation.set(-torso.rotation.x, 0, -torso.rotation.z); rig.body.position.y = torso.position.y;
+      rig.head.rotation.set(-head.rotation.x, head.rotation.y, -head.rotation.z);
+      mirror(rig.armR, shoulders[0], { x: base.armR.x, y: base.armR.y, z: base.armR.z + 0.12 }); mirror(rig.armL, shoulders[1], { x: base.armL.x, y: base.armL.y, z: base.armL.z - 0.12 });
+      rig.legR.rotation.x = -hips[0].rotation.x; rig.legL.rotation.x = -hips[1].rotation.x;
+      kitToque.visible = toque.visible; kitCap.visible = nightcap.visible;
+      const open = Math.max(0, mouth.scale.y - 0.2); rig.face.mouth.scale.set(mouth0.x * (1 + open * 0.3), mouth0.y * (1 + open * 2.5), mouth0.z);
+      model.userData.face(0, t, 'ok');
+    } };
+  }
 
   // ================= a fish that jumps now and then =================
   const jumper = fishModel(0x7dffb0, 0.9); jumper.position.y = -6;
@@ -1262,7 +1299,7 @@
   API.react = (kind, dur) => { react = { kind, t: 0, dur: dur || 0.9 }; };
   API.sunRise = k => { if (k === null) { sunDisc.visible = false; return; } sunDisc.visible = true; sunDisc.position.set(60, -14 + k * 40, -170); };
   let toonT = 0;
-  if (window.FRToon) FRToon.outlineAll(chef, 0.03); // v4.2: the chef gets the same ink line as the guests
+  const outlineRoots = [boat, skiff, dock];
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000) * ((window.FR3D && window.FR3D.timeScale) || 1); last = now; t += dt;
 
@@ -1379,6 +1416,7 @@
       if (k >= 1) react = null;
     }
     if (API.pose) API.pose(dt, t, { torso, head, hips, shoulders, mouth });
+    if (kitChef) kitChef.sync(t);
     const inCabin = chef.parent === boat && chef.position.z > KEND;
     roomEl.textContent = inCabin ? 'Bedroom' : chef.position.z > WALL_Z ? 'Kitchen' : 'Dining room';
     const inBackKitchen = chef.parent === boat && chef.position.z > 5.5 && !inCabin;
@@ -1422,7 +1460,7 @@
     sun.position.set(wp.x + 18, 34, wp.z + 12); sun.target.position.copy(wp);
 
     checkPerf(dt);
-    if (window.FRToon) { toonT -= 1; if (toonT <= 0) { FRToon.toonifyScene(scene); toonT = 60; } FRToon.syncLive(); } // v4.2 toon look
+    if (window.FRToon) { toonT -= 1; if (toonT <= 0) { FRToon.toonifyScene(scene); outlineRoots.forEach(r => FRToon.outlineAll(r, 0.22)); toonT = 60; } FRToon.syncLive(); } // v4.2 toon look
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }

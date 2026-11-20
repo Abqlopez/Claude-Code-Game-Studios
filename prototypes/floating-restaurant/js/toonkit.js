@@ -44,7 +44,7 @@
   }
   // Outline every mesh under a group (once), e.g. the chef.
   function outlineAll(root, minSize) {
-    const list = []; root.traverse(o => { if (o.isMesh && !o.userData.isOutline && !o.userData.outlined && !(o.material && o.material.isMeshBasicMaterial)) list.push(o); });
+    const list = []; root.traverse(o => { if (o.isMesh && o.visible && !o.userData.isOutline && !o.userData.outlined && !o.isInstancedMesh && !(o.material && (o.material.isMeshBasicMaterial || o.material.transparent))) list.push(o); });
     list.forEach(m => { m.geometry.computeBoundingSphere(); if (m.geometry.boundingSphere.radius >= (minSize || 0)) { addOutline(m); m.userData.outlined = true; } });
   }
   function mk(geo, color, x, y, z, parent, o) {
@@ -53,6 +53,7 @@
     m.position.set(x || 0, y || 0, z || 0); m.castShadow = o.shadow !== false; m.receiveShadow = true;
     parent.add(m);
     if (o.outline !== false) addOutline(m);
+    m.userData.outlined = true; // outlineAll leaves it alone
     return m;
   }
   const grp = (x, y, z, p) => { const g = new THREE.Group(); g.position.set(x || 0, y || 0, z || 0); if (p) p.add(g); return g; };
