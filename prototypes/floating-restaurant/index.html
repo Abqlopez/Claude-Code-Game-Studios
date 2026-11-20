@@ -1285,10 +1285,11 @@
     perf.frames++; perf.time += dt;
     if (perf.time < 2) return;
     const fps = perf.frames / perf.time; perf.frames = 0; perf.time = 0;
-    if (fps >= 40 || perf.step >= 2) return;
+    if (fps >= 40 || perf.step >= 3) return;
     perf.step++;
     if (perf.step === 1 && pixelRatio > 1) { pixelRatio = 1; renderer.setPixelRatio(1); resize(); }
-    else { sun.castShadow = false; perf.step = 2; }
+    else if (perf.step <= 2) { sun.castShadow = false; perf.step = 2; }
+    else if (window.FRToon) FRToon.propOutlines(false); // v4.2: last step, props lose their ink lines (characters keep theirs)
   }
 
   // ================= loop =================

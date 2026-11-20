@@ -401,7 +401,7 @@
     A.setTableCount(Math.min(FR.tableCount(), A.tableGroups.length)); if (FR.syncBuilt3d) FR.syncBuilt3d(); if (FR.syncDecor3d) FR.syncDecor3d();
     $('tContinue').hidden = !hasSave;
     if (hasSave) $('tContinue').textContent = `Continue  (Day ${S().day}, $${S().money})`;
-    $('tNote').textContent = 'v4.1 · WASD or arrows to move · E or SPACE to act · works with a mouse or touch too';
+    $('tNote').textContent = 'v4.2 · WASD or arrows to move · E or SPACE to act · works with a mouse or touch too';
     $('title').hidden = false;
     // the camera slowly circles the boat behind the menu
     let a = 0;

@@ -44,9 +44,15 @@
   }
   // Outline every mesh under a group (once), e.g. the chef.
   function outlineAll(root, minSize) {
+    if (!propRoots.includes(root)) propRoots.push(root);
     const list = []; root.traverse(o => { if (o.isMesh && o.visible && !o.userData.isOutline && !o.userData.outlined && !o.isInstancedMesh && !(o.material && (o.material.isMeshBasicMaterial || o.material.transparent))) list.push(o); });
-    list.forEach(m => { m.geometry.computeBoundingSphere(); if (m.geometry.boundingSphere.radius >= (minSize || 0)) { addOutline(m); m.userData.outlined = true; } });
+    if (!propsOn) return;
+    list.forEach(m => { m.geometry.computeBoundingSphere(); if (m.geometry.boundingSphere.radius >= (minSize || 0)) { addOutline(m).userData.prop = true; m.userData.outlined = true; } });
   }
+  // Props' ink lines can be switched off when a slow device needs the frames (characters keep theirs).
+  let propsOn = true;
+  function propOutlines(on) { propsOn = on; propRoots.forEach(r => r.traverse(o => { if (o.userData.prop) o.visible = on; })); }
+  const propRoots = [];
   function mk(geo, color, x, y, z, parent, o) {
     o = o || {};
     const m = new THREE.Mesh(geo, o.mat || T(color, o.m));
@@ -82,5 +88,5 @@
       o.material = Array.isArray(o.material) ? o.material.map(toonOf) : toonOf(o.material);
     });
   }
-  window.FRToon = { ramp, INK, T, mk, grp, addOutline, outlineAll, toonifyScene, syncLive, resize };
+  window.FRToon = { ramp, INK, T, mk, grp, addOutline, outlineAll, propOutlines, toonifyScene, syncLive, resize };
 })();
