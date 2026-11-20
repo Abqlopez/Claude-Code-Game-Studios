@@ -391,6 +391,13 @@
   const NIGHT = { sky: 0x0d1a33, water: 0x123a5c, deep: 0x0a2440, hemi: 0.32, sun: 0.16, lamps: 2.0 };
   scene.fog = new THREE.Fog(DAY.sky, 50, 170);
 
+  // v4.2 sky dome (from the look test): plain sky by day; at dusk and dawn a purple top fading to orange at the horizon.
+  // It follows the camera and draws first, behind everything.
+  const skyU = { uTop: { value: new THREE.Color(DAY.sky) }, uBot: { value: new THREE.Color(DAY.sky) } };
+  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(450, 24, 12), new THREE.ShaderMaterial({ uniforms: skyU, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+    vertexShader: 'varying float vY; void main() { vY = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'uniform vec3 uTop, uBot; varying float vY; void main() { gl_FragColor = vec4(mix(uBot, uTop, smoothstep(-0.02, 0.45, vY)), 1.0); }' }));
+  skyDome.renderOrder = -1000; skyDome.frustumCulled = false; skyDome.userData.noToon = true; scene.add(skyDome);
   // stars and moon (night only)
   const starGeo = new THREE.BufferGeometry(), starPts = [];
   for (let i = 0; i < 500; i++) { const a = rnd(0, Math.PI * 2), e = rnd(0.12, 1.4), r = 200; starPts.push(Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r); }
@@ -1333,7 +1340,10 @@
     // day / night blend
     mix += ((mixT !== null ? mixT : night ? 1 : 0) - mix) * Math.min(1, dt * 1.2);
     dusk += (duskT - dusk) * Math.min(1, dt * 1.2);
-    const sky = cLerp(DAY.sky, NIGHT.sky, mix).lerp(new THREE.Color(0xff9a6a), dusk * 0.55).lerp(new THREE.Color(0x141a26), weather.dark);
+    const skyBase = cLerp(DAY.sky, NIGHT.sky, mix), storm = new THREE.Color(0x141a26);
+    const sky = skyBase.clone().lerp(new THREE.Color(0xffae6b), dusk * 0.85).lerp(storm, weather.dark); // horizon (and fog)
+    skyU.uBot.value.copy(sky); skyU.uTop.value.copy(skyBase).lerp(new THREE.Color(0x5a3fd0), dusk * 0.9).lerp(storm, weather.dark);
+    skyDome.position.copy(camera.position);
     weather.flash = Math.max(0, weather.flash - dt * 3);
     scene.background = sky; scene.fog.color.copy(sky);
     hemi.intensity = DAY.hemi + (NIGHT.hemi - DAY.hemi) * mix + weather.flash * 2.2;
