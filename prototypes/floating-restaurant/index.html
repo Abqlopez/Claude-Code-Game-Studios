@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <title>Floating Restaurant 3D</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=Fredoka:wght@400;600&family=Lilita+One&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=Fredoka:wght@400;600;700&family=Lilita+One&family=Luckiest+Guy&display=swap">
 <style>
   /* Layout: one full-screen 3D view, a small HUD card top-left, controls bottom-right. Single sea look by choice. */
   :root {
@@ -207,6 +207,119 @@
   #rGo2 { background: #2f7a45; }
   @media (max-width: 700px) { .jbook { grid-template-columns: 1fr; overflow: auto; } .jpage { border-radius: 12px !important; } }
   @media (max-width: 640px) { #gearBar { max-width: calc(100vw - 32px); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); } #prompt { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); } }
+
+  /* ================= v4.2 UI look: mostly Bloons (chunky 3D buttons, outlined text, bright blue panels),
+     some Flipline (cream cards, ribbon banners), and our own bit (sticker tilt, bubbles, wavy banner edge). ================= */
+  :root {
+    --k: #1d1430; --blue1: #4fb6ff; --blue2: #1f74d8; --blue3: #15509c; --green1: #7ee35a; --green2: #2fa83a; --gold1: #ffe14d; --gold2: #ffa21f;
+    --red1: #ff7a6b; --red2: #d8342c; --cream: #fff4d6; --chunky: "Luckiest Guy", "Lilita One", "Fredoka", sans-serif;
+    --outline: 0 2px 0 var(--k), 2px 0 0 var(--k), -2px 0 0 var(--k), 0 -2px 0 var(--k), 2px 2px 0 var(--k), -2px 2px 0 var(--k), 2px -2px 0 var(--k), -2px -2px 0 var(--k), 0 4px 0 var(--k);
+    --outline-s: 0 1.5px 0 var(--k), 1.5px 0 0 var(--k), -1.5px 0 0 var(--k), 0 -1.5px 0 var(--k), 0 3px 0 var(--k);
+  }
+  /* buttons: Bloons-style 3D candy, squish on press */
+  button {
+    font: 400 16px var(--chunky); letter-spacing: 0.6px; color: #fff; text-shadow: var(--outline-s);
+    background: linear-gradient(var(--blue1), var(--blue2)); border: 3px solid var(--k); border-radius: 14px;
+    box-shadow: inset 0 3px 0 rgba(255,255,255,0.5), inset 0 -4px 0 rgba(0,0,0,0.18), 0 4px 0 var(--k);
+    transition: transform 0.08s, box-shadow 0.08s, filter 0.12s; position: relative;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.1) saturate(1.1); transform: translateY(-1px) scale(1.02); }
+  button:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 0 3px 0 rgba(255,255,255,0.4), inset 0 -2px 0 rgba(0,0,0,0.18), 0 1px 0 var(--k); }
+  button:disabled { filter: grayscale(0.7) brightness(0.85); cursor: default; }
+  button:focus-visible { outline: 3px solid var(--gold1); outline-offset: 3px; }
+  /* green = go, gold = selected, red = danger */
+  #tContinue, #openBtn, #rGo, #rGo2, #sGo, #mapCard button, #finishBtn, #nextDay, #buildDone, .corner { background: linear-gradient(var(--green1), var(--green2)) !important; }
+  #reel, #actBtn, .ptabs button.on, #gearBar button.on { background: linear-gradient(var(--gold1), var(--gold2)) !important; color: #fff; }
+  #stClose, #buildReset { background: linear-gradient(var(--red1), var(--red2)); }
+  #reel.iced { background: linear-gradient(#e6fbff, #8fdcff) !important; }
+  #actBtn { font: 400 30px var(--chunky); border-radius: 50%; animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-3px); } }
+  /* HUD cards: navy glass with a chunky rim, Bloons-style outlined titles */
+  .hud, #prompt, #carry {
+    background: linear-gradient(rgba(25, 44, 92, 0.92), rgba(16, 26, 60, 0.92)); border: 3px solid var(--k); border-radius: 16px;
+    box-shadow: inset 0 0 0 2px rgba(130, 200, 255, 0.45), 0 4px 0 var(--k); color: #fff;
+  }
+  .hud h1 { font: 400 24px var(--chunky); color: var(--gold1); letter-spacing: 1px; text-shadow: var(--outline); }
+  .hud .tag { opacity: 0.85; }
+  .goal { color: var(--green1); font-weight: 700; }
+  #prompt { font-weight: 600; font-size: 15px; }
+  /* toast: a ribbon that pops in */
+  #toast {
+    background: linear-gradient(var(--gold1), var(--gold2)); color: #fff; font: 400 18px var(--chunky); letter-spacing: 0.5px; text-shadow: var(--outline-s);
+    border: 3px solid var(--k); border-radius: 16px; box-shadow: inset 0 3px 0 rgba(255,255,255,0.5), 0 5px 0 var(--k); animation: toastIn 0.35s cubic-bezier(.2,1.6,.4,1);
+  }
+  @keyframes toastIn { from { transform: translateX(-50%) scale(0.4) rotate(-6deg); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+  /* panels: bright Bloons blue with bubbles rising behind (ours), ribbon banner header (Flipline) */
+  .panel {
+    background: radial-gradient(circle at 15% 85%, rgba(255,255,255,0.12) 0 6px, transparent 7px) 0 0 / 90px 90px,
+                radial-gradient(circle at 70% 40%, rgba(255,255,255,0.10) 0 4px, transparent 5px) 0 0 / 60px 60px,
+                linear-gradient(var(--blue2), var(--blue3));
+    border: 4px solid var(--k); border-radius: 24px; box-shadow: inset 0 0 0 3px rgba(140, 210, 255, 0.55), 0 8px 0 var(--k), 0 16px 40px rgba(0,0,0,0.35);
+    color: #fff; animation: panelIn 0.3s cubic-bezier(.2,1.5,.4,1); padding-top: 18px;
+  }
+  @keyframes panelIn { from { transform: translate(-50%, -46%) scale(0.85); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
+  .panel h2 {
+    justify-self: center; font: 400 28px var(--chunky); letter-spacing: 1px; color: #fff; text-shadow: var(--outline);
+    background: linear-gradient(var(--red1), var(--red2)); border: 3px solid var(--k); border-radius: 12px; padding: 4px 26px 6px;
+    box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), 0 4px 0 var(--k); transform: rotate(-1.5deg); position: relative; margin-top: -6px;
+  }
+  .panel h2::after { /* our wavy edge under the banner */
+    content: ""; position: absolute; left: 10px; right: 10px; bottom: -10px; height: 8px;
+    background: radial-gradient(circle at 6px 0, var(--red2) 5px, transparent 5.5px) 0 0 / 12px 8px repeat-x;
+  }
+  .panel .small { color: #eaf6ff; }
+  #pbody h3, #mapCard h3 { font: 400 22px var(--chunky); letter-spacing: 0.6px; color: var(--gold1); text-shadow: var(--outline-s); }
+  #mapCard h3 { color: #fff; }
+  /* rows and cards: Flipline cream paper with ink text */
+  .row, .catch, .wcard, .sitem {
+    background: var(--cream); color: var(--k); border: 3px solid var(--k); border-radius: 14px; box-shadow: 0 3px 0 var(--k); text-shadow: none;
+  }
+  .row .price, .catch b { color: #c06a00; font-weight: 700; }
+  .row .sub { opacity: 0.75; }
+  .row [style*="#9cffb0"], .row .goal, .catch .goal, .wcard .goal { color: #1f8a2a !important; font-weight: 700; }
+  .row [style*="#ff9c9c"] { color: #c0302a !important; font-weight: 700; }
+  .row [style*="--lantern"], .row [style*="#ffe9a8"] { color: #a85a00 !important; }
+  .row.on { background: #d8ffcf; } .row.bad { background: #ffd6cf; }
+  .wcard { font: 600 15px var(--body); letter-spacing: 0; }
+  .wcard:hover:not(:disabled) { border-color: var(--k); transform: rotate(-0.6deg) scale(1.01); }
+  .sitem { font: 600 12px var(--body); letter-spacing: 0; padding-top: 10px; }
+  .sitem:hover:not(:disabled) { transform: rotate(-2deg) scale(1.04); }
+  .sitem .key { background: var(--k); color: var(--gold1); }
+  .sitem .cnt { color: var(--gold2); text-shadow: var(--outline-s); }
+  .pill { background: rgba(255,255,255,0.18); color: #fff; }
+  .rgrid .tot { color: var(--gold1); border-top-color: var(--gold1); }
+  /* title screen: big outlined logo that bobs */
+  #title .big { font: 400 52px var(--chunky); background: none; border: 0; box-shadow: none; color: var(--gold1); text-shadow: var(--outline), 0 8px 0 rgba(0,0,0,0.25); transform: rotate(-3deg); animation: bob 2.4s ease-in-out infinite; padding: 0; }
+  #title .big::after { display: none; }
+  #title .tbtns button { font-size: 24px; min-height: 60px; }
+  /* zoom pill, tabs, gear bar */
+  .zoom { background: linear-gradient(var(--blue1), var(--blue2)); border: 3px solid var(--k); border-radius: 16px; box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), 0 4px 0 var(--k); }
+  .zoom button { box-shadow: none; background: transparent !important; border: 0; font: 400 28px var(--chunky); }
+  .zoom span { color: #fff; font-weight: 700; text-shadow: var(--outline-s); }
+  .ptabs button, #gearBar button { font-size: 14px; }
+  #gearBar button.bait { background: linear-gradient(#c9a0ff, #8a55e0); }
+  /* tickets, carry, labels over heads */
+  .tk { background: var(--cream); border: 3px solid var(--k); border-radius: 12px; box-shadow: 0 3px 0 var(--k); color: var(--k); }
+  .tk.cook { background: #ffe9a8; } .tk.ready { background: #c4ffb0; animation: bob 1s ease-in-out infinite; } .tk.pass { background: #cfeaff; }
+  .lbl .bub, .lbl .say { border-width: 3px; border-color: var(--k); box-shadow: 0 3px 0 var(--k); }
+  .lbl .big, .lbl .mark { font-family: var(--chunky); letter-spacing: 1px; text-shadow: var(--outline); }
+  .lbl .pat, .lbl .slot { height: 9px; border: 2px solid var(--k); border-radius: 6px; }
+  #caption { font: 400 26px var(--chunky); letter-spacing: 0.8px; color: #fff; text-shadow: var(--outline); background: linear-gradient(rgba(25,44,92,0.92), rgba(16,26,60,0.92)); border: 3px solid var(--k); border-radius: 18px; box-shadow: inset 0 0 0 2px rgba(130,200,255,0.45), 0 5px 0 var(--k); }
+  /* fishing fight: chunky meters */
+  #fStatus, #fFlash, #fBig { font-family: var(--chunky); letter-spacing: 1px; text-shadow: var(--outline); color: #fff; }
+  #fFlash, #fBig { color: var(--gold1); }
+  .meter { color: #fff; font-weight: 700; }
+  .tension, .stam { border: 3px solid var(--k); border-radius: 10px; box-shadow: 0 3px 0 var(--k); }
+  .tension { height: 22px; overflow: hidden; } .tension .z1 { background: linear-gradient(var(--green1), var(--green2)); } .tension .z2 { background: linear-gradient(var(--gold1), var(--gold2)); } .tension .z3 { background: linear-gradient(var(--red1), var(--red2)); }
+  .tension { overflow: visible; } #fNeedle { border: 3px solid var(--k); border-radius: 5px; }
+  #fStam { background: linear-gradient(#9ae8ff, #2fa8e6); }
+  #fCanvas { border: 3px solid var(--k); box-shadow: 0 3px 0 var(--k); }
+  /* minimap: a rope-gold ring */
+  #minimap { border: 5px solid var(--gold2); box-shadow: 0 0 0 3px var(--k), 0 5px 0 3px var(--k); }
+  /* journal buttons and the sea chart card keep their paper, with the new buttons */
+  #mapCard { border: 3px solid var(--k); box-shadow: 0 4px 0 var(--k); }
+  #seaMap { border: 4px solid var(--k); }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 <div id="view"></div>
 <div class="hud" id="walkHud" hidden>
