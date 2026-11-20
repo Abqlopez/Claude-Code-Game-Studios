@@ -413,17 +413,21 @@
     sh.uniforms.uTime = seaTime;
     sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>',
       'vec3 transformed = vec3(position);\n vec4 wpos = modelMatrix * vec4(position, 1.0);\n' +
-      'transformed.y += sin(wpos.x * 0.16 + uTime * 1.0) * 0.32 + cos(wpos.z * 0.2 + uTime * 0.75) * 0.28 + sin((wpos.x + wpos.z) * 0.45 + uTime * 1.6) * 0.07;\n vSeaW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      'float seaJ = fract(sin(dot(floor(wpos.xz / 3.25 + 0.5), vec2(12.9898, 78.233))) * 43758.5453) * 6.28;\n' +
+      'transformed.y += sin(wpos.x * 0.16 + uTime * 1.0) * 0.32 + cos(wpos.z * 0.2 + uTime * 0.75) * 0.28 + sin((wpos.x + wpos.z) * 0.45 + uTime * 1.6) * 0.07 + sin(uTime * 1.7 + seaJ) * 0.32;\n vSeaW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     sh.vertexShader = 'varying vec3 vSeaW;\n' + sh.vertexShader;
-    // v4.2 cartoon sea: the lit colour is snapped to three flat tones of the water colour, plus little white wave streaks
+    // v4.2 cartoon sea (from the look test): every facet takes one of three flat blues by which way it faces,
+    // plus little white wave streaks. The waves are the same, so the boat still bobs with them; each corner
+    // of the water also bobs a little on its own, which breaks the sea into big uneven triangles.
     sh.fragmentShader = 'uniform float uTime;\nvarying vec3 vSeaW;\n' + sh.fragmentShader.replace('#include <tonemapping_fragment>',
-      'float seaBase = max(0.001, dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)));\n' +
-      'float seaL = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)) / seaBase;\n' +
-      'vec3 seaC = seaL > 1.0 ? diffuseColor.rgb * 1.4 : (seaL > 0.72 ? diffuseColor.rgb * 1.1 : diffuseColor.rgb * 0.8);\n' +
-      'seaC *= clamp(dot(gl_FragColor.rgb, vec3(0.333)) / max(0.001, dot(seaC, vec3(0.333))) * 1.6, 0.45, 1.0); // keeps night dark\n' +
+      'vec3 seaN = normalize(cross(dFdx(vSeaW), dFdy(vSeaW))); if (seaN.y < 0.0) seaN = -seaN;\n' +
+      'float seaL = dot(seaN, normalize(vec3(0.45, 1.0, 0.25)));\n' +
+      'vec3 seaDeep = mix(diffuseColor.rgb, vec3(0.08, 0.56, 0.82), 0.6), seaMid = mix(diffuseColor.rgb, vec3(0.15, 0.71, 0.90), 0.75), seaLite = mix(diffuseColor.rgb, vec3(0.37, 0.86, 0.94), 0.8);\n' +
+      'vec3 seaC = seaL > 0.975 ? seaLite : (seaL > 0.92 ? seaMid : seaDeep);\n' +
       'float seaS = sin(vSeaW.x * 0.9 + sin(vSeaW.z * 0.4 + uTime) * 2.5 + uTime * 1.5) * sin(vSeaW.z * 0.7 - uTime);\n' +
-      'seaC = mix(seaC, vec3(1.0), step(0.94, seaS) * 0.6);\n' +
-      'gl_FragColor.rgb = seaC;\n#include <tonemapping_fragment>');
+      'seaC = mix(seaC, vec3(1.0), step(0.975, seaS) * 0.7);\n' +
+      'float seaDay = clamp(dot(diffuseColor.rgb, vec3(0.333)) / 0.42, 0.3, 1.0);\n' + // the night water colour is darker: keep the night dark
+      'gl_FragColor.rgb = seaC * mix(0.55, 1.0, seaDay);\n#include <tonemapping_fragment>');
   };
   const waveAt = (x, z, t) => Math.sin(x * 0.16 + t * 1.0) * 0.32 + Math.cos(z * 0.2 + t * 0.75) * 0.28 + Math.sin((x + z) * 0.45 + t * 1.6) * 0.07;
   // foam hugging the hull
