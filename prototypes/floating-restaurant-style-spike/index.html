@@ -66,6 +66,9 @@
   #side .row { display: flex; gap: 6px; flex-wrap: wrap; }
   #side button { font-size: 14px; min-height: 36px; padding: 4px 10px; }
   #side button.alt { background: var(--sky); }
+  #side button.meet { background: var(--coral); }
+  .tag { position: absolute; transform: translate(-50%, 0); background: var(--paper); border: 3px solid var(--ink); border-radius: 10px; padding: 2px 8px; font: 400 15px var(--display); white-space: nowrap; box-shadow: 0 3px 0 var(--ink); }
+  .tag small { display: block; font: 600 10px var(--body); text-align: center; color: var(--coral); }
   @media (max-width: 720px) {
     #rail { top: calc(60px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); justify-content: flex-start; gap: 4px; }
     .tk { width: 56px; padding: 4px 2px; } .tk img { width: 30px; height: 30px; } .tk span:last-child { display: none; }
@@ -90,16 +93,18 @@
 <div id="rail" aria-label="Orders"></div>
 <button id="serve" type="button">SERVE!<small>serves the most impatient guest</small></button>
 <div id="side">
-  <div class="note"><b>Look test 5</b>Our own guests on Quaternius bodies, sized to match: big heads, no weapons, a real squid. Drag to turn, scroll or pinch to zoom.</div>
+  <div class="note"><b>Look test 6</b>Every guest is ours now, built to the notes in Guests.md. Tap Meet the guests to see them all. Drag to turn, scroll or pinch to zoom.</div>
   <div class="row">
     <button id="tOutline" type="button">Outlines: on</button>
     <button id="tTime" type="button" class="alt">Sunset</button>
+    <button id="tMeet" type="button" class="meet">Meet the guests</button>
   </div>
 </div>
 <div id="loading"><h2>Setting sail…</h2><div class="lbar"><i id="lfill"></i></div><p id="ltext">Loading the crew</p></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="guests.js"></script>
 <script>
 (function () {
   // Models: Quaternius (CC0): Pirate Kit, Sushi Restaurant Kit, Cute Animated Monsters,
@@ -246,7 +251,7 @@
 
   // ================= loading =================
   const ASSETS = {
-    glb: ['captain', 'anne', 'sharky', 'crab', 'fishfolk', 'chefhat', 'coin', 'barrel', 'bucket_fishes', 'anchor', 'chest_gold', 'palmtree_1', 'palmtree_2', 'palmtree_3', 'rock_1', 'rock_2', 'dock',
+    glb: ['coin', 'barrel', 'bucket_fishes', 'anchor', 'chest_gold', 'palmtree_1', 'palmtree_2', 'palmtree_3', 'rock_1', 'rock_2', 'dock',
       'table', 'light', 'pot_1_filled', 'oven', 'counter_straight', 'plate', 'salmonnigiri', 'ramen', 'onigiri', 'maguronigiri', 'plant1',
       'fish_clownfish', 'fish_puffer', 'fish_tuna', 'fish_koi', 'fish_bluetang', 'food_fish', 'food_steak']
   };
@@ -340,12 +345,14 @@
   const ringM = mk(new THREE.TorusGeometry(0.55, 0.2, 6, 14), 0xff4f4f, 4.62, DECK - 0.1, 3.5, boat, { outline: false }); ringM.rotation.y = Math.PI / 2;
 
   // ================= dishes =================
+  // The game's own recipes, shown with Quaternius food models
   const DISHES = {
+    grilled: { name: 'Grilled Sardine', model: 'food_fish', price: 12 },
     catch: { name: 'Catch of the Day', model: 'food_fish', price: 10 },
-    salmon: { name: 'Salmon Nigiri', model: 'salmonnigiri', price: 24 },
-    tuna: { name: 'Tuna Nigiri', model: 'maguronigiri', price: 30 },
-    ramen: { name: 'Eel Ramen', model: 'ramen', price: 30 },
-    onigiri: { name: 'Onigiri', model: 'onigiri', price: 12 },
+    kelp: { name: 'Kelp Wrap', model: 'onigiri', price: 15 },
+    glow: { name: 'Glowgill Sushi', model: 'salmonnigiri', price: 24 },
+    tuna: { name: 'Tuna Sushi', model: 'maguronigiri', price: 30 },
+    soup: { name: 'Thunder Eel Soup', model: 'ramen', price: 30 },
     steak: { name: 'Swordfish Steak', model: 'food_steak', price: 36 }
   };
   // little 3D snapshots of each dish for the tickets and bubbles
@@ -367,93 +374,18 @@
   // ================= everything that needs models =================
   const seats = [], anims = [];
   let chef, chefAct, jumpers = [], coinProto, built = false;
-  // Our own guests, built on Quaternius bodies: new colours, bigger heads, no weapons.
+  // ================= our guests (guests.js): species and outfits from design/floating-restaurant/Systems/Guests.md =================
+  const GK = window.makeGuestKit({ mk, grp, INK, ramp });
+  const chars = [];
   const KIND = {
-    gus: { name: 'Old Gus', model: 'captain', h: 2.26, hue: 200, sat: 1.1, head: 1.3, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['catch', 'steak'] },
-    marina: { name: 'Marina', model: 'anne', h: 2.3, hue: 150, sat: 1.3, head: 1.3, happy: 'Wave', mad: 'No', idle: 'Idle', dishes: ['salmon', 'onigiri'] },
-    seaking: { name: 'Sea King', model: 'sharky', h: 2.27, hue: 60, sat: 1.2, head: 1.25, crown: true, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['tuna', 'steak'] },
-    pinch: { name: 'Pinch', model: 'crab', h: 1.4, bright: 2.3, hue: 0, sat: 1.5, happy: 'Dance', mad: 'No', idle: 'Idle', dishes: ['catch', 'onigiri'] },
-    gill: { name: 'Gill', model: 'fishfolk', h: 2.24, hue: 160, sat: 1.3, head: 1.15, happy: 'Wave', mad: 'No', idle: 'Idle', dishes: ['ramen', 'catch'] },
-    inky: { name: 'Inky', squid: true, h: 2.5, happy: 'Yes', mad: 'No', idle: 'Idle', dishes: ['ramen', 'tuna'] }
+    gus: { name: 'Old Gus', species: 'human', skin: GK.SKIN[2], hair: 'short', hairColor: 0xc8c8d0, beard: 0xe0e0e8, bigBeard: true, captain: true, pipe: true, shirt: 0x24356a, sleeve: 0x24356a, pants: 0x2a2a3a, dishes: ['grilled', 'catch', 'steak'] },
+    marina: { name: 'Marina', species: 'mermaid', skin: GK.SKIN[0], shirt: GK.SKIN[0], hair: 'long', hairColor: 0xd23c2a, flowers: true, lashes: true, brow: 0xa02a1a, tail: 0x2ec4b6, fin: 0x9cf0e0, dishes: ['kelp'] },
+    pinch: { name: 'Pinch', species: 'crabfolk', role: 'foodie', skin: 0xff5d3c, beret: 0x2f5fd6, scale: 0.85, dishes: ['catch'] },
+    inky: { name: 'Inky', species: 'octofolk', role: 'influencer', skin: 0xa36bff, lashes: true, dishes: ['soup', 'tuna', 'steak'] },
+    king: { name: 'King Coral', species: 'seaking', skin: 0x4fb5a5, shirt: 0x1f6a7a, sleeve: 0x1f6a7a, pants: 0x1d3f6a, scale: 1.1, dishes: ['soup', 'glow'] },
+    morwen: { name: 'Morwen', species: 'seawitch', skin: 0x7bc96f, hair: 'long', hairColor: 0x2a1d14, shirt: 0x5a2a8a, lashes: true, dishes: ['soup', 'glow'] }
   };
-  const heads = []; // [bone, scale]: animations reset bone scale, so we re-apply it every frame
-  function findBone(root, re) { let b = null; root.traverse(n => { if (!b && n.isBone && re.test(n.name)) b = n; }); return b; }
-  function crown(parent, s) {
-    const c = grp(0, 0, 0, parent);
-    mk(cyl(0.42 * s, 0.38 * s, 0.22 * s, 8), 0xffd23c, 0, 0, 0, c, { m: { emissive: 0x4a3000 } });
-    for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; mk(cone(0.09 * s, 0.3 * s, 4), 0xffd23c, Math.cos(a) * 0.36 * s, 0.24 * s, Math.sin(a) * 0.36 * s, c, { m: { emissive: 0x4a3000 } }); mk(ico(0.06 * s), [0xff4f8a, 0x3fd0ff, 0x7dff8a][i % 3], Math.cos(a) * 0.4 * s, 0.02 * s, Math.sin(a) * 0.4 * s, c, { outline: false }); }
-    return c;
-  }
-  // Inky: a squid of our own. Tall mantle with fins, huge eyes, eight wiggly arms and two long tentacles.
-  function squid(h) {
-    const root = new THREE.Group(), body = grp(0, 0, 0, root), s = h / 3.15;
-    const PINK = 0xff7aa8, DEEP = 0xe0508a;
-    const prof = [[0.5, 0.65], [0.62, 0.8], [0.72, 1.1], [0.7, 1.5], [0.55, 2.0], [0.25, 2.45], [0, 2.6]].map(([x, y]) => new THREE.Vector2(x * s, y * s));
-    const mantle = mk(new THREE.LatheGeometry(prof, 9), PINK, 0, 0, 0, body);
-    [-1, 1].forEach(k => { const f = mk(cone(0.42 * s, 0.75 * s, 3), DEEP, k * 0.5 * s, 2.15 * s, 0, body, { outline: false }); f.rotation.z = k * 1.2; f.scale.z = 0.25; });
-    [[0.3, 1.9, 0.5], [-0.35, 1.6, 0.55], [0.45, 1.35, 0.45], [-0.2, 2.2, 0.35]].forEach(([x, y, z]) => mk(ico(0.08 * s), DEEP, x * s, y * s, z * s, body, { outline: false }));
-    const eyes = [-1, 1].map(k => { const e = grp(k * 0.33 * s, 1.0 * s, 0.55 * s, body);
-      mk(new THREE.SphereGeometry(0.26 * s, 10, 8), 0xffffff, 0, 0, 0, e).scale.set(0.9, 1.15, 0.6);
-      mk(new THREE.SphereGeometry(0.14 * s, 8, 6), INK, 0, -0.02 * s, 0.11 * s, e, { outline: false });
-      mk(new THREE.SphereGeometry(0.05 * s, 6, 4), 0xffffff, 0.05 * s, 0.06 * s, 0.21 * s, e, { outline: false }); return e; });
-    [-1, 1].forEach(k => mk(new THREE.SphereGeometry(0.1 * s, 6, 4), 0xff4f7a, k * 0.55 * s, 0.82 * s, 0.45 * s, body, { outline: false }).scale.set(1, 0.6, 0.4));
-    const mouth = mk(new THREE.TorusGeometry(0.1 * s, 0.03 * s, 3, 6, Math.PI), 0x7a1d2a, 0, 0.72 * s, 0.6 * s, body, { outline: false }); mouth.rotation.z = Math.PI;
-    const arms = [];
-    for (let i = 0; i < 10; i++) {
-      const long = i >= 8, a = (i / 8) * Math.PI * 2 + (long ? 0.4 + (i - 8) * Math.PI : 0.2);
-      let seg = grp(Math.cos(a) * 0.42 * s, 0.7 * s, Math.sin(a) * 0.42 * s, body); seg.rotation.y = -a + Math.PI / 2;
-      const chain = [], n = 3, len = (long ? 0.4 : 0.3) * s;
-      for (let k = 0; k < n; k++) {
-        const r0 = (0.14 - k * 0.03) * s;
-        mk(cyl(Math.max(0.03 * s, r0 - 0.03 * s), r0, len, 5), PINK, 0, -len / 2, 0, seg);
-        chain.push(seg); const nx = grp(0, -len, 0, seg); seg = nx;
-      }
-      if (long) mk(ico(0.14 * s), DEEP, 0, 0, 0, seg).scale.set(1, 1.5, 0.7);
-      chain[0].rotation.x = 0.55; arms.push({ chain, ph: i * 0.8, long });
-    }
-    let mode = 'Idle', modeT = 0;
-    root.userData.play = (name) => { mode = name; modeT = 0; };
-    root.userData.update = (dt, t) => {
-      modeT += dt; if (mode !== 'Idle' && modeT > 1.2) mode = 'Idle';
-      const hop = mode === 'Yes' ? Math.abs(Math.sin(modeT * 8)) * 0.5 * s : 0;
-      body.position.y = 0.55 * s + Math.sin(t * 2) * 0.08 * s + hop;
-      body.rotation.y = mode === 'No' ? Math.sin(modeT * 14) * 0.4 : 0;
-      mantle.scale.set(1 + Math.sin(t * 2) * 0.03, 1 - Math.sin(t * 2) * 0.03, 1 + Math.sin(t * 2) * 0.03);
-      arms.forEach(A => A.chain.forEach((c, k) => {
-        const up = mode === 'Yes' ? -0.6 : 0;
-        if (k === 0) c.rotation.x = 0.55 + up + Math.sin(t * 3 + A.ph) * 0.15; else c.rotation.x = Math.sin(t * 3 + A.ph + k) * (A.long ? 0.45 : 0.3);
-      }));
-      eyes.forEach(e => { e.scale.y = (t * 0.7 + 1) % 4 < 0.12 ? 0.1 : 1; });
-      mouth.rotation.z = mode === 'No' ? 0 : Math.PI;
-    };
-    squids.push(root);
-    return root;
-  }
-  const squids = [];
-  function actor(kindKey) {
-    const K = KIND[kindKey];
-    if (K.squid) return squid(K.h);
-    const g = M[K.model];
-    if (!g) return null;
-    const root = fit(toonify(g.scene, { gltf: true, bright: K.bright, hue: K.hue, sat: K.sat }), K.h);
-    const head = findBone(g.scene, /^head$/i) || findBone(g.scene, /head/i);
-    if (head && K.head) heads.push([head, K.head]);
-    if (head && K.crown) { root.updateMatrixWorld(true); const hs = Math.max(1e-4, new THREE.Vector3().setFromMatrixScale(head.matrixWorld).x), c = crown(head, 1); c.scale.setScalar(0.75 / hs); c.position.y = 0.62 / hs; }
-    const mixer = new THREE.AnimationMixer(g.scene), acts = {};
-    g.animations.forEach(a => { acts[a.name] = mixer.clipAction(a); });
-    const play = (name, once) => {
-      const a = acts[name] || acts[K.idle]; if (!a) return;
-      if (root.userData.cur && root.userData.cur !== a) root.userData.cur.fadeOut(0.2);
-      a.reset().setEffectiveWeight(1).fadeIn(0.2).play();
-      if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false; } else a.setLoop(THREE.LoopRepeat);
-      root.userData.cur = a;
-    };
-    mixer.addEventListener('finished', () => play(K.idle));
-    anims.push(mixer);
-    root.userData.play = play; play(K.idle);
-    acts[K.idle] && (acts[K.idle].time = Math.random() * 2);
-    return root;
-  }
+  function actor(kindKey) { const g = GK.make(KIND[kindKey]); chars.push(g); return g; }
   function table(x, z, guests, n) {
     const t = grp(x, DECK + 0.1, z, boat);
     const tb = fit(toonify(copy('table'), { gltf: true }), 2.4, 'w'); t.add(tb);
@@ -498,20 +430,15 @@
     prop('anchor', 1.6, 3.0, -9.0, 0.6, 'w'); prop('chest_gold', 1.0, -2.4, -10.0, -0.4);
     // dining tables with guests
     table(-1.8, -4.4, [[Math.PI * 0.95, 'gus'], [Math.PI * 0.05, 'marina']], 1);
-    table(1.6, 1.6, [[Math.PI * 1.05, 'pinch'], [-Math.PI * 0.05, 'seaking']], 2);
-    table(-0.6, -8.4, [[Math.PI * 0.95, 'inky'], [Math.PI * 0.05, 'gill']], 3);
+    table(1.6, 1.6, [[Math.PI * 1.05, 'pinch'], [-Math.PI * 0.05, 'inky']], 2);
+    table(-0.6, -8.4, [[Math.PI * 0.95, 'king'], [Math.PI * 0.05, 'morwen']], 3);
     // the chef, carrying a plate up and down the deck
-    if (M.chefhat) {
-      // Chef Remy: Quaternius chef, our colours (his skin was authored near-black), bigger head
-      chef = fit(toonify(M.chefhat.scene, { gltf: true, mats: { Skin: 0xf2b48a, Band: 0xff4f4f, DarkClothes: 0x2ec4b6, Clothes: 0xffffff, Hat: 0xffffff, Moustache: 0x6a3a1a } }), 2.48); boat.add(chef);
-      const ch = findBone(M.chefhat.scene, /^head$/i); if (ch) heads.push([ch, 1.25]);
-      const mixer = new THREE.AnimationMixer(M.chefhat.scene); anims.push(mixer);
-      const clip = M.chefhat.animations.find(a => a.name === 'Walk_Carry') || M.chefhat.animations.find(a => a.name === 'Walk');
-      if (clip) mixer.clipAction(clip).play();
-      const tray = grp(0, 1.45, 0.55, chef);
+    // Chef: one of ours too
+    chef = GK.make({ name: 'Chef', species: 'human', role: 'chef', skin: GK.SKIN[1], hair: 'short', hairColor: 0x5a3420, shirt: 0xffffff, sleeve: 0xffffff, pants: 0x2a2a3a, shoes: 0x1d1430 });
+    chars.push(chef); boat.add(chef); chef.userData.walk = true; chef.userData.carry = true;
+    { const tray = grp(0, 1.12, 0.62, chef);
       tray.add(fit(toonify(copy('plate'), { gltf: true }), 0.7, 'w'));
-      const f = fit(toonify(copy('salmonnigiri'), { gltf: true }), 0.5, 'w'); f.position.y = 0.06; tray.add(f);
-    }
+      const f = fit(toonify(copy('food_fish'), { gltf: true }), 0.5, 'w'); f.position.y = 0.06; tray.add(f); }
     island(-70, -90, 1.3); island(85, -70, 1); island(30, -140, 1.6);
     const dock = fit(toonify(copy('dock'), { gltf: true }), 14, 'w'); dock.position.set(-58, -0.2, -78); dock.rotation.y = 0.6; scene.add(dock);
     // The OBJ fish are authored very dark, so each gets a cartoon palette: lightest part cream, the rest its two colours
@@ -582,12 +509,60 @@
     if (tip) setTimeout(() => pop(s.g, s.patience > 0.85 ? 'PERFECT!' : 'TIP!', 'heart', 4.8), 220);
     setTimeout(() => addCash(pay + tip), 450);
     servePlate(s); s.eatT = 3;
-    s.g.userData.play(KIND[s.kind].happy, true); s.mad = false;
+    s.g.userData.play(Math.random() < 0.5 ? 'Yes' : 'Wave'); s.mad = false;
     s.patience = 1; s.dish = pick(KIND[s.kind].dishes);
     drawRail(s);
   }
   $('serve').addEventListener('click', () => { if (seats.length) serve(seats.reduce((a, b) => (b.patience < a.patience ? b : a))); });
   addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); $('serve').click(); } });
+
+  // ================= "Meet the guests": every species and role on a raft behind the boat =================
+  const LINEUP = [
+    [['Sailor', 'role', { species: 'human', role: 'sailor', skin: 1, hair: 'short', hairColor: 0x5a3420, pants: 0xffffff }],
+     ['Foodie', 'role', { species: 'human', role: 'foodie', skin: 3, hair: 'curly', hairColor: 0x2a1d14, shirt: 0xff9a3c }],
+     ['Pirate', 'role', { species: 'human', role: 'pirate', skin: 2, hair: 'long', hairColor: 0x2a1d14, beard: 0x2a1d14, shirt: 0xfff6e0, pants: 0x3a2a55 }],
+     ['Family', 'role', { species: 'human', role: 'family', skin: 4, hair: 'bun', hairColor: 0x2a1d14, shirt: 0x3fd08a, lashes: true }],
+     ['Kid', 'role', { species: 'human', kid: true, skin: 4, hair: 'spiky', hairColor: 0x2a1d14, shirt: 0xffd23c, scale: 0.72 }],
+     ['Influencer', 'role', { species: 'human', role: 'influencer', skin: 0, hair: 'long', hairColor: 0xe8c070, shirt: 0xff6fae, lashes: true }],
+     ['Critic', 'in disguise', { species: 'human', role: 'critic', skin: 5, shirt: 0xb08a5a, sleeve: 0xb08a5a, pants: 0x6a4a2a, mustache: 0x2a1d14 }],
+     ['Royal', 'role', { species: 'human', role: 'royal', skin: 1, hair: 'long', hairColor: 0xa8642a, shirt: 0x8a3fd0, lashes: true }]],
+    [['Mermaid', 'species', { species: 'mermaid', skin: 0, shirt: GK.SKIN[0], hair: 'long', hairColor: 0xe8c070, lashes: true, tail: 0x8a5ae0, fin: 0xd0b0ff }],
+     ['Sea King', 'species', { species: 'seaking', skin: 0x4fb5a5, shirt: 0x1f6a7a, sleeve: 0x1f6a7a, pants: 0x1d3f6a, scale: 1.1 }],
+     ['Octofolk', 'species', { species: 'octofolk', skin: 0xa36bff }],
+     ['Crabfolk', 'species', { species: 'crabfolk', skin: 0xff5d3c, scale: 0.85 }],
+     ['Sea Witch', 'species', { species: 'seawitch', skin: 0x7bc96f, hair: 'long', hairColor: 0x2a1d14, shirt: 0x5a2a8a, lashes: true }],
+     ['Old Gus', 'regular ♥♡♡', KIND.gus],
+     ['Marina', 'regular ♥♡♡', KIND.marina],
+     ['Chef', 'that is you', { species: 'human', role: 'chef', skin: 1, hair: 'short', hairColor: 0x5a3420, shirt: 0xffffff, sleeve: 0xffffff, pants: 0x2a2a3a }]]
+  ];
+  const RAFT = new THREE.Vector3(0, 0, 34);
+  let raft = null, meet = false;
+  const tags = [];
+  function buildRaft() {
+    raft = grp(RAFT.x, 0, RAFT.z);
+    for (let i = 0; i < 12; i++) mk(box(1.9, 0.35, 9), woods[i % 3], -11 + i * 2, 0.35, 0, raft, { outline: false });
+    mk(box(23.5, 0.3, 0.4), 0x9a5a2a, 0, 0.62, 4.4, raft, { outline: false }); mk(box(23.5, 0.3, 0.4), 0x9a5a2a, 0, 0.62, -4.4, raft, { outline: false });
+    mk(box(23, 1.2, 3.2), 0xe8a95c, 0, 1.15, -2.4, raft); mk(box(23.2, 0.12, 3.3), 0xf6c47a, 0, 1.78, -2.4, raft, { outline: false }); // a step so the back row can be seen
+    [-11.5, 11.5].forEach(x => [-4.2, 4.2].forEach(z => { mk(cyl(0.18, 0.2, 1.4, 6), 0xfff6e0, x, 1.0, z, raft); mk(ico(0.26), 0xff4f4f, x, 1.75, z, raft); }));
+    LINEUP.forEach((row, r) => row.forEach(([name, sub, spec], i) => {
+      const sp = Object.assign({}, spec); if (typeof sp.skin === 'number' && sp.skin < 10) sp.skin = GK.SKIN[sp.skin];
+      const g = GK.make(sp); chars.push(g);
+      g.position.set((i - (row.length - 1) / 2) * 2.7 + (r ? 0 : 1.35), r ? 0.55 : 1.75, r ? 2.2 : -2.4); raft.add(g);
+      const el = document.createElement('div'); el.className = 'tag'; el.innerHTML = name + '<small>' + sub + '</small>'; el.hidden = true; labels.appendChild(el);
+      tags.push({ g, el, up: r ? -0.05 : 2.75 * (sp.scale || 1), below: !!r });
+    }));
+  }
+  let saved = null;
+  $('tMeet').addEventListener('click', () => {
+    meet = !meet;
+    if (meet && !raft) buildRaft();
+    if (meet) { saved = { yaw, pitch, dist, t: target.clone() }; target.set(RAFT.x, 1.2, RAFT.z); yaw = 0; pitch = 0.42; dist = 26; auto = false; }
+    else if (saved) { yaw = saved.yaw; pitch = saved.pitch; dist = saved.dist; target.copy(saved.t); }
+    tags.forEach(t => { t.el.hidden = !meet; });
+    seats.forEach(s => { s.el.hidden = meet; });
+    $('tMeet').textContent = meet ? 'Back to the boat' : 'Meet the guests';
+  });
+  function placeTags() { if (!meet) return; tags.forEach(t => { const p = toScreen(t.g, t.up); if (p) { t.el.style.left = p[0] + 'px'; t.el.style.top = (p[1] + (t.below ? 4 : -44)) + 'px'; } }); }
 
   // ================= camera =================
   let yaw = Math.PI - 0.75, pitch = 0.5, dist = 28, auto = true;
@@ -629,21 +604,21 @@
     seaU.uT.value = t;
     boat.position.y = waveY(0, 1, t) * 0.6; boat.rotation.z = Math.sin(t * 0.9) * 0.025; boat.rotation.x = Math.cos(t * 0.7) * 0.015;
     anims.forEach(m => m.update(dt));
-    heads.forEach(([b, k]) => b.scale.setScalar(k));
-    squids.forEach(q => q.userData.update(dt, t));
+    chars.forEach(c => c.userData.update(dt, t));
     if (chef) { const w = Math.sin(t * 0.32); chef.position.set(3.0, DECK + 0.1, -1 + w * 7); chef.rotation.y = Math.cos(t * 0.32) > 0 ? 0 : Math.PI; }
     if (built) seats.forEach(s => {
       s.patience = Math.max(0, s.patience - dt * s.rate);
-      if (s.patience < 0.3 && !s.mad) { s.mad = true; s.g.userData.play(KIND[s.kind].mad, true); }
-      if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); s.g.userData.play(KIND[s.kind].mad, true); s.patience = 1; s.mad = false; s.dish = pick(KIND[s.kind].dishes); drawRail(s); }
+      s.g.userData.setMood(s.patience); if (s.patience < 0.3 && !s.mad) { s.mad = true; }
+      if (s.patience === 0) { pop(s.g, 'HMPH!', 'mad'); s.g.userData.play('No'); s.patience = 1; s.mad = false; s.dish = pick(KIND[s.kind].dishes); drawRail(s); }
       if (s.eatT > 0) { s.eatT -= dt; if (s.eatT <= 0) s.plate.visible = false; }
-      const p = toScreen(s.g, 3.6);
+      const p = meet ? null : toScreen(s.g, 3.6);
       if (p) {
         s.el.hidden = false; s.el.style.left = p[0] + 'px'; s.el.style.top = p[1] + 'px';
         const img = s.el.querySelector('img'); if (img.dataset.d !== s.dish) { img.src = DISHES[s.dish].src; img.dataset.d = s.dish; }
         const bar = s.el.querySelector('i'); bar.style.width = (s.patience * 100) + '%'; bar.style.background = s.patience > 0.6 ? '#3fd08a' : s.patience > 0.3 ? '#ffd23c' : '#ff5d5d';
       } else s.el.hidden = true;
     });
+    placeTags();
     railT -= dt; if (railT <= 0 && built) { drawRail(); railT = 0.5; }
     flag.rotation.y = Math.sin(t * 3) * 0.25;
     clouds.forEach((c, i) => { c.position.x += dt * (0.6 + i * 0.1); if (c.position.x > 140) c.position.x = -140; });

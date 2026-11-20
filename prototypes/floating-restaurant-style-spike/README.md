@@ -5,7 +5,7 @@
 
 **How to run:** open `index.html` in a browser (it loads three.js r128 from cdnjs). Drag to orbit, scroll or pinch to zoom. Buttons toggle outlines and sunset.
 
-**Status:** in progress (v4: our own guests on Quaternius bodies, custom squid, no weapons).
+**Status:** in progress (v6: every guest and the chef are our own, built in `guests.js` from Guests.md; Quaternius models are used only for props, food and fish).
 
 **Findings:** none yet.
 
