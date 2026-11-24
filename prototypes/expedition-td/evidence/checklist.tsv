@@ -1,0 +1,8 @@
+L1	pass	evidence/play.png	green valley village, fixed three-quarter view, figures with shadows sorted by depth, each its own silhouette (figures.png)
+L2	pass	index.html:317	hero battle levels from kills; 4/2 upgrade cap in canUp
+L3	pass	evidence/play.png	2.5D, one fixed camera
+M1	pass	index.html:338	play starts in hero placing mode with a ghost at the cursor; hero costs 0
+M2	pass	index.html:983	placing on a hill shows +range: high ground; archer bought in the check run (play.png, Gold 150)
+M3	pass	evidence/play.png	Space started wave 1; walkers on the road in the shot. Blocking by Shield Fighter in code (index.html:567 area), not shown in the shot
+C1	pass	index.html:533	swarm ignores blockers except a taunt (567), burrower rumble tell then surfaces at the back line (533), Alpha wind-up slam at the biggest clump (585); waves in config.js
+C2	pass	index.html:666	gate at 0 goes to the game-over scene

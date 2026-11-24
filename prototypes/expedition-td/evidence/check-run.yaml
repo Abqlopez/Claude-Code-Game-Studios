@@ -1,0 +1,74 @@
+# The one-shot's small check (check-run/1).
+# Written by one-shot-check.sh --record: the results are /prototype's reading of
+# evidence/self-check.tsv; never edited by hand.
+kind: check-run/1
+engine: web
+browser: "HeadlessChrome/158.0.0.0"
+time: "2026-11-24 08:03:44"
+checks:
+  - id: boots
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: shot
+    result: pass
+    evidence:
+      - "evidence/play.png"
+  - id: outlines
+    result: pass
+    evidence:
+      - "evidence/figures.png"
+  - id: brief-words
+    result: pass
+    evidence:
+      - "evidence/brief-words.tsv"
+  - id: emoji
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: nearest-game
+    result: pass
+    evidence:
+      - "evidence/nearest-game.txt"
+brief_checklist:
+  - id: L1
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Look: 2.5D painted-flat village on a green valley, fixed camera at a three-quarter angle; figures stand up off the ground with soft shadows, sorted by depth; simple shapes as placeholders but each figure its own silhouette."
+  - id: L2
+    result: pass
+    evidence: "index.html:317"
+    item: "References: Bloons TD 6 (hero levels from kills, two-path upgrade cap)."
+  - id: L3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "View: 2.5D · Camera: fixed three-quarter top-down."
+  - id: M1
+    result: pass
+    evidence: "index.html:338"
+    item: "Hero ghost follows the mouse; place it free."
+  - id: M2
+    result: pass
+    evidence: "index.html:983"
+    item: "Buy an Archer with the starting gold, see \"+range: high ground\" on the hill."
+  - id: M3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Space starts wave 1: walkers come down the road and stop at whoever blocks them."
+  - id: C1
+    result: pass
+    evidence: "index.html:533"
+    item: "Wave 4 swarm rushes past blockers; wave 7 burrowers surface behind the line after a rumble; wave 10 Alpha slams clumps."
+  - id: C2
+    result: pass
+    evidence: "index.html:666"
+    item: "Gate at 0 is a loss."
+measures:
+  - id: step-time
+    value: 19.700
+    unit: ms
+    by: browser
+    detail: "mean 0.040 ms, slowest 19.700 ms, 706 steps"
+not_assessed:
+  - what: "keep"
+    why: "the brief has no Keep section"

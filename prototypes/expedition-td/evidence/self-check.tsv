@@ -1,0 +1,64 @@
+time	2026-11-24 08:03:44
+not_assessed	keep	the brief has no Keep section
+briefword	2.5D	unlisted	no shot at evidence/play.png
+briefword	3D	unlisted
+briefword	Bloons heroes	unlisted
+checklist	L1	unlisted	-	Look: 2.5D painted-flat village on a green valley, fixed camera at a three-quarter angle; figures stand up off the ground with soft shadows, sorted by depth; simple shapes as placeholders but each figure its own silhouette.	
+checklist	L2	unlisted	-	References: Bloons TD 6 (hero levels from kills, two-path upgrade cap).	
+checklist	L3	unlisted	-	View: 2.5D · Camera: fixed three-quarter top-down.	
+checklist	M1	unlisted	-	Hero ghost follows the mouse; place it free.	
+checklist	M2	unlisted	-	Buy an Archer with the starting gold, see "+range: high ground" on the hill.	
+checklist	M3	unlisted	-	Space starts wave 1: walkers come down the road and stop at whoever blocks them.	
+checklist	C1	unlisted	-	Wave 4 swarm rushes past blockers; wave 7 burrowers surface behind the line after a rumble; wave 10 Alpha slams clumps.	
+checklist	C2	unlisted	-	Gate at 0 is a loss.	
+browser	HeadlessChrome/158.0.0.0
+scene	play	0	title
+scene	play	1	play
+digits	log	22px Georgia, "Times New Roman", serif	tabular	0
+digits	log	19px Georgia, "Times New Roman", serif	tabular	0
+digits	log	bold 13px Georgia, "Times New Roman", serif	tabular	0
+digits	log	bold 22px Georgia, "Times New Roman", serif	tabular	0
+digits	log	bold 20px Georgia, "Times New Roman", serif	tabular	0
+digits	log	17px Georgia, "Times New Roman", serif	tabular	0
+digits	log	bold 17px Georgia, "Times New Roman", serif	tabular	0
+digits	log	bold 16px Georgia, "Times New Roman", serif	tabular	0
+digits	log	15px Georgia, "Times New Roman", serif	tabular	0
+digits	log	bold 14px Georgia, "Times New Roman", serif	tabular	0
+digits	log	14px Georgia, "Times New Roman", serif	tabular	0
+measure	step-time	play	0.040	19.700	706
+lane	play	stop	11.8	317
+uncaught	play	0
+text	play	canvas	768,338,792,348	18.0	2.30	inside	Lv 1
+text	play	canvas	21,14,105,31	30.0	11.38	inside	Gold 150
+text	play	canvas	201,15,334,31	30.0	13.15	inside	Gate 100 / 100
+text	play	canvas	420,15,528,31	30.0	13.15	inside	Wave 1 / 10
+text	play	canvas	590,15,675,30	28.5	11.53	inside	Hero Lv 1
+text	play	canvas	1173,16,1259,32	24.0	7.81	inside	Speed x1 (F)
+text	play	canvas	63,651,112,663	22.5	5.46	inside	1  Hero
+text	play	canvas	62,673,102,688	21.0	5.46	inside	placed
+text	play	canvas	62,693,123,703	18.0	7.59	inside	Main tower
+text	play	canvas	210,650,274,663	22.5	11.51	inside	2  Archer
+text	play	canvas	211,673,263,688	21.0	9.07	inside	150 gold
+text	play	canvas	210,693,254,705	18.0	6.23	inside	Damage
+text	play	canvas	358,652,457,666	21.0	5.46	inside	3  Shield Fighter
+text	play	canvas	358,673,411,688	21.0	5.46	inside	200 gold
+text	play	canvas	358,692,398,703	18.0	7.59	inside	Control
+text	play	canvas	506,651,579,666	22.5	5.46	inside	4  Support
+text	play	canvas	507,673,559,688	21.0	5.46	inside	175 gold
+text	play	canvas	506,693,548,705	18.0	7.59	inside	Support
+text	play	canvas	628,652,690,667	22.5	9.19	inside	Q  Strike
+text	play	canvas	642,679,676,694	21.0	6.23	inside	ready
+text	play	canvas	722,643,768,655	21.0	14.43	inside	Archer
+text	play	canvas	722,666,782,677	21.0	7.81	inside	HP 70 / 70
+text	play	canvas	722,686,768,700	21.0	7.81	inside	dmg 9.0
+text	play	canvas	840,651,920,666	21.0	11.51	inside	U  Rapid  ....
+text	play	canvas	840,674,906,685	21.0	9.71	inside	Faster shots
+text	play	canvas	840,693,882,707	21.0	9.07	inside	90 gold
+text	play	canvas	1022,651,1117,663	21.0	11.51	inside	I  Precision  ....
+text	play	canvas	1022,674,1087,688	21.0	9.71	inside	More range
+text	play	canvas	1022,693,1064,707	21.0	9.07	inside	90 gold
+text	play	canvas	1211,655,1253,667	21.0	11.51	inside	X  Sell
+text	play	canvas	1217,682,1247,693	21.0	9.07	inside	+105
+screen	play	drawn
+shot	play	prototypes/expedition-td/evidence/play.png
+responds	changed	34

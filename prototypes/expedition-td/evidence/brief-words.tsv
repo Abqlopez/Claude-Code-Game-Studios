@@ -1,0 +1,7 @@
+2.5D	figures stand up off a flat ground plane with soft shadows, sorted by depth; hills raised with a shaded face; buildings drawn as boxes with front, side and roof	evidence/play.png
+3D-looking environments	shaded hills, cliff faces with depth, sunk road edge, bridges with rails, box buildings	evidence/play.png
+fixed camera	one fixed three-quarter view, no pan or zoom	evidence/play.png
+placeholder shapes	simple flat-colour shapes for every figure, each its own silhouette	evidence/figures.png
+like Bloons heroes	hero gains battle levels from kills, shown as Lv on the hero and in the HUD	evidence/play.png
+3D	3D-looking, not true 3D, as the brief says (3D-looking environments): shaded hills, cliff faces, box buildings in 2D canvas	evidence/play.png
+Bloons heroes	hero gains battle levels from kills (Lv on the hero and HUD), resets each battle	evidence/play.png

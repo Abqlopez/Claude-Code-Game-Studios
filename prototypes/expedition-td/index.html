@@ -1,0 +1,1187 @@
+<!doctype html>
+<!-- PROTOTYPE - NOT FOR PRODUCTION -->
+<!-- Question: Is a 10-wave battle fun when the towers are people and the main tower is your own hero? -->
+<!-- Date: 2026-11-24 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expedition TD</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1f17; overflow: hidden; }
+  body { font-variant-numeric: tabular-nums; }
+  canvas { display: block; margin: 0 auto; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script src="config.js"></script>
+<script>
+'use strict';
+// ---- Built to be checked ----------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const tune = new Proxy({}, { get: (_, k) => CONFIG[k].value }); // live: tune.speed is CONFIG.speed.value
+const STEP = 1 / 60;
+const W = 1280, H = 720;
+const PIXEL = false;
+const FONT = 'Georgia, "Times New Roman", serif';
+const TITLE = 'Expedition TD';
+const CONTROLS = [
+  'Mouse: aim and click    1-4: pick hero / Archer / Shield / Support',
+  'Click or Enter: place    Arrows: move the cursor    Esc / right-click: cancel',
+  'Click a person, then U / I: upgrade path A / B    X: sell',
+  'Q: hero strike    Space: next wave    F: speed    P: pause    M: mute',
+];
+const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 };
+const CHEAP = params.get('render') === 'cheap';
+let seed;
+function rng() {
+  seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const events = [];
+
+// ---- Screen ---------------------------------------------------------------------------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function fit() {
+  const k = Math.min(innerWidth / W, innerHeight / H);
+  const s = PIXEL ? Math.max(1, Math.floor(k)) : k;
+  const r = PIXEL ? 1 : s * (devicePixelRatio || 1);
+  canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
+  canvas.style.width = Math.round(W * s) + 'px'; canvas.style.height = Math.round(H * s) + 'px';
+  canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * s) / 2)) + 'px';
+  canvas.style.imageRendering = PIXEL ? 'pixelated' : 'auto';
+  ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = !PIXEL;
+}
+addEventListener('resize', fit); fit();
+function clear(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
+function text(s, x, y, size, c, align = 'center', bold = false) {
+  ctx.fillStyle = c; ctx.font = `${bold ? 'bold ' : ''}${size}px ${FONT}`; ctx.textAlign = align;
+  ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+}
+
+// ---- Input ------------------------------------------------------------------------------
+const down = new Set(), hit = new Set();
+const pressed = code => hit.has(code);
+addEventListener('keydown', e => {
+  startAudio();
+  if (!e.repeat) { down.add(e.code); hit.add(e.code); }
+  if (e.code === 'Space' || e.code.startsWith('Arrow') || e.code === 'Tab') e.preventDefault();
+});
+addEventListener('keyup', e => down.delete(e.code));
+addEventListener('blur', () => down.clear());
+const mouse = { x: 780, y: 330 };
+const clicks = []; // processed on the step, so a run replays the same
+function toLogical(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H };
+}
+canvas.addEventListener('pointermove', e => { const p = toLogical(e); mouse.x = p.x; mouse.y = p.y; });
+canvas.addEventListener('pointerdown', e => {
+  startAudio();
+  const p = toLogical(e); mouse.x = p.x; mouse.y = p.y;
+  clicks.push({ x: p.x, y: p.y, right: e.button === 2 });
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// ---- Audio ------------------------------------------------------------------------------
+let audio = null, muted = false;
+function startAudio() {
+  if (!audio) {
+    const ac = window.GAME_AUDIO || new (window.AudioContext || window.webkitAudioContext)();
+    const out = ac.createGain(); out.gain.value = muted ? 0 : tune.volume;
+    out.connect(ac.destination); audio = { ac, out };
+  }
+  if (audio.ac.state === 'suspended') audio.ac.resume();
+}
+function setMuted(m) { muted = m; if (audio) audio.out.gain.value = m ? 0 : tune.volume; }
+addEventListener('tune', () => setMuted(muted));
+function tone(freq, dur, type = 'square', vol = 0.3, slide = 0) {
+  if (!audio || muted) return;
+  const t = audio.ac.currentTime, o = audio.ac.createOscillator(), g = audio.ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(audio.out); o.start(t); o.stop(t + dur);
+}
+const sfx = {
+  shot: () => tone(880, 0.05, 'triangle', 0.08, 0.6),
+  hit: () => tone(220, 0.05, 'square', 0.05, 0.5),
+  place: () => { tone(330, 0.08, 'triangle', 0.2); tone(495, 0.12, 'triangle', 0.15); },
+  wave: () => { tone(196, 0.3, 'sawtooth', 0.12); tone(294, 0.4, 'sawtooth', 0.1); },
+  rumble: () => tone(55, 0.6, 'sawtooth', 0.25, 0.7),
+  slam: () => tone(70, 0.5, 'square', 0.35, 0.3),
+  windup: () => tone(110, 0.5, 'sawtooth', 0.12, 2.2),
+  gate: () => tone(140, 0.15, 'square', 0.2, 0.5),
+  down: () => tone(300, 0.4, 'triangle', 0.2, 0.3),
+  up: () => tone(400, 0.25, 'triangle', 0.18, 1.6),
+  strike: () => { tone(160, 0.3, 'square', 0.25, 0.4); tone(640, 0.2, 'triangle', 0.15, 0.5); },
+  gold: () => tone(1046, 0.08, 'triangle', 0.1),
+  level: () => { tone(523, 0.1, 'triangle', 0.15); tone(784, 0.18, 'triangle', 0.15); },
+  win: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.3 + i * 0.1, 'triangle', 0.18)),
+  lose: () => tone(200, 1.2, 'sawtooth', 0.2, 0.25),
+  deny: () => tone(120, 0.12, 'square', 0.12),
+};
+
+// ---- The map ----------------------------------------------------------------------------
+const TOP = 48, BOTTOM = 628; // the playfield between the HUD bars
+const ROAD = [[-40, 250], [150, 250], [255, 320], [262, 470], [410, 540], [600, 522], [700, 430],
+  [700, 300], [820, 228], [960, 262], [1025, 380], [1132, 400]];
+const RIVER = [[565, TOP], [548, 200], [522, 360], [516, 500], [505, 560], [495, BOTTOM]];
+const RIVER_W = 48;
+const CLIFF = [[290, TOP], [500, TOP], [478, 118], [420, 186], [330, 172], [286, 104]];
+const HILLS = [{ x: 880, y: 118, rx: 112, ry: 50 }, { x: 115, y: 432, rx: 88, ry: 46 }];
+const MUD = { x: 700, y: 365, rx: 52, ry: 78 };
+const GATE = { x: 1140, y: 400 };
+const BUILDINGS = [ // x, y is the front of the base; w, d footprint; h height
+  { x: 1215, y: 150, w: 70, d: 40, h: 46, roof: '#8a3b2c' }, { x: 1200, y: 285, w: 64, d: 36, h: 40, roof: '#6d4a2e' },
+  { x: 1225, y: 520, w: 70, d: 40, h: 46, roof: '#8a3b2c' }, { x: 1195, y: 620, w: 60, d: 34, h: 38, roof: '#6d4a2e' },
+  { x: 990, y: 128, w: 56, d: 32, h: 36, roof: '#7b4a33' }, { x: 66, y: 600, w: 66, d: 36, h: 40, roof: '#9a6a2c' },
+];
+const VILLAGER_PATH = [[100, 612], [260, 604], [410, 566], [505, 548], [600, 545], [800, 600], [1000, 585], [1132, 430]];
+
+function makePath(pts) {
+  const segs = []; let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[i + 1], len = Math.hypot(bx - ax, by - ay);
+    segs.push({ ax, ay, bx, by, len, start: total }); total += len;
+  }
+  return { segs, total };
+}
+const road = makePath(ROAD), vpath = makePath(VILLAGER_PATH), river = makePath(RIVER);
+function posAt(p, d) {
+  d = Math.max(0, Math.min(p.total, d));
+  for (const s of p.segs) if (d <= s.start + s.len) {
+    const k = (d - s.start) / s.len;
+    return { x: s.ax + (s.bx - s.ax) * k, y: s.ay + (s.by - s.ay) * k, dx: s.bx - s.ax, dy: s.by - s.ay };
+  }
+  const s = p.segs[p.segs.length - 1]; return { x: s.bx, y: s.by, dx: 1, dy: 0 };
+}
+function nearestOn(p, x, y) { // { dist, d }
+  let best = { dist: Infinity, d: 0 };
+  for (const s of p.segs) {
+    const vx = s.bx - s.ax, vy = s.by - s.ay;
+    const k = Math.max(0, Math.min(1, ((x - s.ax) * vx + (y - s.ay) * vy) / (s.len * s.len)));
+    const px = s.ax + vx * k, py = s.ay + vy * k, dist = Math.hypot(x - px, y - py);
+    if (dist < best.dist) best = { dist, d: s.start + k * s.len };
+  }
+  return best;
+}
+function inPoly(poly, x, y) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+const inEll = (e, x, y, pad = 1) => ((x - e.x) / (e.rx * pad)) ** 2 + ((y - e.y) / (e.ry * pad)) ** 2 <= 1;
+const onHill = (x, y) => HILLS.some(h => inEll(h, x, y));
+const inMud = (x, y) => inEll(MUD, x, y);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function spotProblem(x, y, ignore) {
+  if (x < 18 || x > 1118 || y < TOP + 22 || y > BOTTOM - 8) return 'out of bounds';
+  if (nearestOn(river, x, y).dist < RIVER_W / 2 + 6) return 'blocked: deep water';
+  if (inPoly(CLIFF, x, y)) return 'blocked: cliffs';
+  for (const b of BUILDINGS) if (Math.abs(x - b.x) < b.w / 2 + 8 && y < b.y + 10 && y > b.y - b.d - 30) return 'blocked: inside a building';
+  if (nearestOn(road, x, y).dist < 30) return 'blocked: the road';
+  if (propBlocked(x, y)) return 'blocked: tree or rock';
+  if (nearestOn(vpath, x, y).dist < 14) return 'blocked: the villagers\' path';
+  for (const u of state.units) if (u !== ignore && Math.hypot(u.x - x, u.y - y) < 36) return 'too close to someone';
+  return null;
+}
+
+// ---- Units ------------------------------------------------------------------------------
+const KINDS = {
+  mc: { name: 'Hero', role: 'Main tower' },
+  archer: { name: 'Archer', role: 'Damage', paths: ['Rapid', 'Precision'],
+    tiers: [['Faster shots', 'Double arrow', 'Triple arrow', 'Arrow storm'], ['More range', 'Piercing', 'Critical hits', 'Sniper shot']] },
+  shield: { name: 'Shield Fighter', role: 'Control', paths: ['Wall', 'Bash'],
+    tiers: [['Blocks more', 'More HP', 'Taunt', 'Unbreakable'], ['Stuns', 'Knockback', 'Ground slam', 'Shockwave']] },
+  support: { name: 'Support', role: 'Support', paths: ['Healing', 'Inspire'],
+    tiers: [['Faster heals', 'Area heal', 'Faster revives', 'Mass heal'], ['Attack speed aura', 'More range', 'Gold bonus', 'Rally']] },
+};
+const costOf = k => k === 'mc' ? 0 : tune['cost_' + k];
+const upCost = t => tune['upgrade_t' + (t + 1)];
+function canUp(u, p) { // 2 paths x 4 tiers: tier 4 in one, only tier 2 in the other
+  const next = (p === 0 ? u.a : u.b) + 1, other = p === 0 ? u.b : u.a;
+  return next <= 4 && !(next > 2 && other > 2);
+}
+function capReason(u, p) {
+  const mine = p === 0 ? u.a : u.b;
+  if (mine >= 4) return 'maxed';
+  return 'locked: other path past tier 2';
+}
+
+function inspireMul(u) { // attack-rate multiplier from Inspire supports and Rally
+  let m = 1;
+  for (const s of state.units) {
+    if (s.kind !== 'support' || s.down > 0 || s === u) continue;
+    const r = stats(s).range;
+    if (Math.hypot(s.x - u.x, s.y - u.y) > r) continue;
+    if (s.b >= 1) m += 0.2;
+    if (s.rallyT > 0) m += 0.6;
+  }
+  return m;
+}
+function stats(u) {
+  const hg = u.high ? 1 + tune.high_ground_range : 1;
+  if (u.kind === 'mc') {
+    const lv = 1 + tune.mc_level_bonus * (state.mcLevel - 1);
+    return { range: tune.mc_range * hg, dmg: tune.mc_damage * lv, rate: tune.mc_rate * lv, maxhp: tune.mc_hp };
+  }
+  if (u.kind === 'archer') return {
+    range: tune.archer_range * hg * (u.b >= 1 ? 1.25 : 1), dmg: tune.archer_damage,
+    rate: tune.archer_rate * (u.a >= 1 ? 1.35 : 1), maxhp: tune.archer_hp,
+    shots: u.a >= 3 ? 3 : u.a >= 2 ? 2 : 1, pierce: u.b >= 2, crit: u.b >= 3,
+  };
+  if (u.kind === 'shield') return {
+    range: tune.shield_range * hg, dmg: tune.shield_damage, rate: tune.shield_rate,
+    maxhp: tune.shield_hp * (u.a >= 2 ? 1.5 : 1), block: tune.shield_block + (u.a >= 1 ? 1 : 0),
+    taunt: u.a >= 3, stun: u.b >= 1, knock: u.b >= 2,
+  };
+  return {
+    range: tune.support_range * hg * (u.b >= 2 ? 1.3 : 1), heal: tune.support_heal,
+    rate: tune.support_rate * (u.a >= 1 ? 1.6 : 1), maxhp: tune.support_hp, area: u.a >= 2,
+  };
+}
+function addUnit(kind, x, y) {
+  const u = { id: ++state.nextId, kind, x, y, a: 0, b: 0, cd: 0.3, abil: 6, down: 0, spent: costOf(kind),
+    high: onHill(x, y), rallyT: 0, unbreakT: 0, unbreakCd: 0, engaged: 0, flash: 0, face: 1, anim: rng() * 6 };
+  u.hp = stats(u).maxhp; state.units.push(u); return u;
+}
+function hurtUnit(u, dmg) {
+  if (u.down > 0 || u.unbreakT > 0) return;
+  const st = stats(u);
+  if (u.kind === 'shield' && u.a >= 4 && u.unbreakCd <= 0 && (u.hp - dmg) < st.maxhp * 0.3) {
+    u.unbreakT = 5; u.unbreakCd = 30; fx({ type: 'text', x: u.x, y: u.y - 60, s: 'Unbreakable!', c: '#ffe28a', t: 1.2 }); return;
+  }
+  u.hp -= dmg; u.flash = 0.12;
+  if (u.hp <= 0) {
+    u.hp = 0; u.down = u.kind === 'mc' ? tune.mc_down_time : tune.companion_down_time; u.downMax = u.down;
+    sfx.down(); fx({ type: 'text', x: u.x, y: u.y - 50, s: u.kind === 'mc' ? 'Hero downed!' : KINDS[u.kind].name + ' downed', c: '#ff8a7a', t: 1.4 });
+    events.push({ type: 'downed', kind: u.kind });
+  }
+}
+
+// ---- Enemies ----------------------------------------------------------------------------
+const ENEMY = {
+  walker: { name: 'Walker', r: 14 }, swarm: { name: 'Swarm', r: 7 },
+  burrower: { name: 'Burrower', r: 15 }, alpha: { name: 'Alpha', r: 34 },
+};
+function spawn(kind) {
+  const grow = 1 + tune.enemy_hp_growth * (state.wave - 1);
+  const hp = tune[kind + '_hp'] * grow;
+  const e = { kind, d: 0, x: ROAD[0][0], y: ROAD[0][1], hp, maxhp: hp, off: (rng() - 0.5) * 14,
+    stun: 0, blockedBy: null, mode: 'walk', t: 0, face: 1, anim: rng() * 6, flash: 0, slamCd: 3, target: null };
+  if (kind === 'burrower') {
+    e.mode = 'tell'; e.t = tune.burrower_tell; sfx.rumble();
+    const tgt = burrowTarget();
+    if (tgt) { e.target = tgt; e.x = tgt.x + (rng() - 0.5) * 40; e.y = tgt.y + 26; }
+    else { const p = posAt(road, road.total * 0.7); e.x = p.x; e.y = p.y; }
+  }
+  state.enemies.push(e); return e;
+}
+function spawnSwarm(n) {
+  for (let i = 0; i < n; i++) {
+    const e = spawn('swarm'); e.mode = 'gather'; e.t = tune.swarm_gather + i * 0.06;
+    e.x = 14 + rng() * 46; e.y = 230 + rng() * 40;
+  }
+}
+function burrowTarget() { // the back line: the person standing nearest the gate, unless a taunt is close
+  const alive = state.units.filter(u => u.down <= 0);
+  if (!alive.length) return null;
+  let back = alive[0];
+  for (const u of alive) if (dist(u, GATE) < dist(back, GATE)) back = u;
+  for (const u of alive) if (u.kind === 'shield' && stats(u).taunt && dist(u, back) < 170) return u;
+  return back;
+}
+function hurtEnemy(e, dmg, crit = false) {
+  if (e.hp <= 0 || e.mode === 'tell' || e.mode === 'under') return;
+  e.hp -= dmg; e.flash = 0.08;
+  if (crit) fx({ type: 'text', x: e.x, y: e.y - 30, s: 'crit!', c: '#ffd75a', t: 0.6 });
+  if (e.hp <= 0) killEnemy(e);
+}
+function killEnemy(e) {
+  const g = tune['bounty_' + e.kind];
+  state.gold += g; state.kills++;
+  addXp(g);
+  fx({ type: 'text', x: e.x, y: e.y - 20, s: '+' + g, c: '#ffd75a', t: 0.8 });
+  fx({ type: 'puff', x: e.x, y: e.y, t: 0.4, r: ENEMY[e.kind].r * 1.6 });
+  events.push({ type: 'kill', kind: e.kind });
+}
+function addXp(x) {
+  if (state.mcLevel >= tune.mc_max_level) return;
+  state.mcXp += x;
+  while (state.mcXp >= tune.mc_xp_level && state.mcLevel < tune.mc_max_level) {
+    state.mcXp -= tune.mc_xp_level; state.mcLevel++;
+    const mc = state.units.find(u => u.kind === 'mc');
+    if (mc) fx({ type: 'text', x: mc.x, y: mc.y - 70, s: 'Level ' + state.mcLevel, c: '#9ee7ff', t: 1.4 });
+    sfx.level();
+  }
+}
+
+// ---- Effects ----------------------------------------------------------------------------
+function fx(f) { f.max = f.t; state.fx.push(f); }
+
+// ---- State and waves --------------------------------------------------------------------
+let scene, state;
+function reset() {
+  seed = Number(params.get('seed')) || CONFIG.seed;
+  state = {
+    t: 0, score: 0, gained: '', gold: tune.start_gold, gate: tune.gate_hp, wave: 0, phase: 'build',
+    units: [], enemies: [], shots: [], fx: [], villagers: [], queue: [], waveT: 0,
+    placing: 'mc', selected: null, nextId: 0, mcLevel: 1, mcXp: 0, strikeCd: 0, speed: 1,
+    msg: '', msgT: 0, kills: 0, saved: 0, lost: 0, shake: 0, won: false,
+  };
+  mouse.x = 780; mouse.y = 330;
+}
+function say(s, t = 2.2) { state.msg = s; state.msgT = t; }
+function startWave() {
+  if (state.phase !== 'build' || state.wave >= CONFIG.waves.length) return;
+  if (!state.units.some(u => u.kind === 'mc')) { say('Place your hero first: it is free.'); sfx.deny(); return; }
+  state.wave++; state.phase = 'wave'; state.waveT = 0; state.queue = [];
+  const w = CONFIG.waves[state.wave - 1];
+  for (const g of w.groups) {
+    if (g.kind === 'swarm') state.queue.push({ t: g.delay, kind: 'swarm', n: g.count });
+    else for (let i = 0; i < g.count; i++) state.queue.push({ t: g.delay + i * (g.gap || 1), kind: g.kind });
+  }
+  if (w.villagers) for (let i = 0; i < tune.villagers_per_wave; i++) state.queue.push({ t: 2 + i * 1.6, kind: 'villager' });
+  state.queue.sort((a, b) => a.t - b.t);
+  sfx.wave(); events.push({ type: 'wave', n: state.wave });
+  if (w.villagers) say('Villagers are fleeing to the gate: keep the road clear to save them (+' + tune.villager_gold + ' each).', 4);
+}
+function endWave() {
+  const bonus = tune.wave_clear_base + tune.wave_clear_per_wave * state.wave
+    + state.units.filter(u => u.kind === 'support' && u.b >= 3).length * 15;
+  state.gold += bonus; state.phase = 'build'; sfx.gold();
+  for (const u of state.units) { if (u.down > 0) { u.down = 0; u.hp = stats(u).maxhp * 0.5; } }
+  if (state.wave >= CONFIG.waves.length) {
+    state.won = true; state.gained = 'The village stands!'; scene = 'results'; sfx.win(); events.push({ type: 'win' });
+    return;
+  }
+  say(`Wave ${state.wave} cleared: +${bonus} gold. Space for wave ${state.wave + 1}.`, 3.5);
+}
+
+// ---- Simulation -------------------------------------------------------------------------
+function trySelectOrPlace(x, y) {
+  if (y > BOTTOM) { panelClick(x, y); return; }
+  if (state.placing) { placeAt(x, y); return; }
+  let best = null;
+  for (const u of state.units) if (Math.hypot(u.x - x, u.y - 14 - y) < 30 && (!best || Math.hypot(u.x - x, u.y - y) < Math.hypot(best.x - x, best.y - y))) best = u;
+  state.selected = best;
+}
+function choose(kind) {
+  if (kind !== 'mc' && !state.units.some(u => u.kind === 'mc')) { say('Place your hero first: it is free.'); sfx.deny(); return; }
+  if (kind === 'mc' && state.units.some(u => u.kind === 'mc')) { state.selected = state.units.find(u => u.kind === 'mc'); return; }
+  if (state.gold < costOf(kind)) { say(`Not enough gold for the ${KINDS[kind].name} (${costOf(kind)}).`); sfx.deny(); return; }
+  state.placing = kind; state.selected = null;
+}
+function placeAt(x, y) {
+  const k = state.placing, p = spotProblem(x, y);
+  if (p) { say(p); sfx.deny(); return; }
+  if (state.gold < costOf(k)) { say('Not enough gold.'); sfx.deny(); state.placing = null; return; }
+  state.gold -= costOf(k);
+  const u = addUnit(k, x, y); sfx.place(); events.push({ type: 'place', kind: k });
+  fx({ type: 'ring', x, y, r: 30, t: 0.4, c: '#fff' });
+  state.placing = null; state.selected = u;
+  if (k === 'mc') say('Hero placed. Buy a companion (2-4), then Space to start wave 1.', 4);
+}
+function upgrade(p) {
+  const u = state.selected; if (!u || u.kind === 'mc') return;
+  if (!canUp(u, p)) { say(capReason(u, p)); sfx.deny(); return; }
+  const tier = p === 0 ? u.a : u.b, c = upCost(tier);
+  if (state.gold < c) { say(`Need ${c} gold.`); sfx.deny(); return; }
+  const before = stats(u).maxhp;
+  state.gold -= c; u.spent += c; if (p === 0) u.a++; else u.b++;
+  const after = stats(u).maxhp; if (after > before && u.down <= 0) u.hp += after - before;
+  sfx.level(); fx({ type: 'text', x: u.x, y: u.y - 60, s: KINDS[u.kind].tiers[p][tier], c: '#bff0a0', t: 1.2 });
+  events.push({ type: 'upgrade', kind: u.kind, path: p, tier: tier + 1 });
+}
+function sell() {
+  const u = state.selected; if (!u || u.kind === 'mc') return;
+  const back = Math.floor(u.spent * tune.sell_refund);
+  state.gold += back; state.units = state.units.filter(v => v !== u); state.selected = null;
+  for (const e of state.enemies) if (e.blockedBy === u) e.blockedBy = null;
+  fx({ type: 'text', x: u.x, y: u.y - 30, s: '+' + back, c: '#ffd75a', t: 0.8 }); sfx.gold();
+}
+function heroStrike() {
+  const mc = state.units.find(u => u.kind === 'mc');
+  if (!mc) return;
+  if (mc.down > 0) { say('The hero is down.'); sfx.deny(); return; }
+  if (state.strikeCd > 0) { sfx.deny(); return; }
+  state.strikeCd = tune.strike_cooldown; sfx.strike(); state.shake = 0.25;
+  fx({ type: 'ring', x: mc.x, y: mc.y, r: tune.strike_radius, t: 0.5, c: '#9ee7ff', fill: true });
+  for (const e of state.enemies) {
+    if (e.mode === 'tell' || e.mode === 'under' || e.mode === 'gather') continue;
+    if (Math.hypot(e.x - mc.x, e.y - mc.y) <= tune.strike_radius) {
+      hurtEnemy(e, tune.strike_damage * (1 + tune.mc_level_bonus * (state.mcLevel - 1)));
+      if (e.kind !== 'alpha' && e.mode === 'walk') { e.d = Math.max(0, e.d - tune.strike_knockback); e.blockedBy = null; }
+      e.stun = Math.max(e.stun, 0.4);
+    }
+  }
+  events.push({ type: 'strike' });
+}
+
+function enemiesInRange(u, r) {
+  return state.enemies.filter(e => e.hp > 0 && e.mode !== 'tell' && e.mode !== 'under' && e.mode !== 'gather'
+    && Math.hypot(e.x - u.x, e.y - u.y) <= r);
+}
+const progress = e => e.mode === 'walk' ? e.d : road.total * 0.8; // how close to the gate
+function shoot(u, e, kind, dmg, extra = {}) {
+  state.shots.push(Object.assign({ x: u.x, y: u.y - 34, e, kind, dmg, speed: kind === 'snipe' ? 1400 : 700 }, extra));
+}
+
+function simUnits(dt) {
+  for (const u of state.units) {
+    u.anim += dt; u.flash = Math.max(0, u.flash - dt);
+    u.rallyT = Math.max(0, u.rallyT - dt); u.unbreakT = Math.max(0, u.unbreakT - dt); u.unbreakCd = Math.max(0, u.unbreakCd - dt);
+    if (u.down > 0) {
+      let mul = 1;
+      for (const s of state.units) if (s.kind === 'support' && s.down <= 0 && s.a >= 3 && Math.hypot(s.x - u.x, s.y - u.y) <= stats(s).range) mul = 2;
+      u.down -= dt * mul;
+      if (u.down <= 0) { u.down = 0; u.hp = stats(u).maxhp * 0.5; sfx.up(); fx({ type: 'text', x: u.x, y: u.y - 50, s: 'Back up!', c: '#bff0a0', t: 1 }); }
+      continue;
+    }
+    if (state.phase !== 'wave') continue;
+    const st = stats(u), rate = (st.rate || 1) * inspireMul(u);
+    u.cd -= dt; u.abil -= dt;
+    if (u.kind === 'support') {
+      if (u.cd <= 0) {
+        const allies = state.units.filter(v => v.down <= 0 && v.hp < stats(v).maxhp && Math.hypot(v.x - u.x, v.y - u.y) <= st.range);
+        if (allies.length) {
+          allies.sort((p, q) => p.hp / stats(p).maxhp - q.hp / stats(q).maxhp);
+          for (const v of st.area ? allies : [allies[0]]) { v.hp = Math.min(stats(v).maxhp, v.hp + st.heal); fx({ type: 'heal', x: v.x, y: v.y - 20, t: 0.6 }); }
+          u.cd = 1 / rate;
+        }
+      }
+      if (u.a >= 4 && u.abil <= 0) { // Mass heal
+        u.abil = 20; fx({ type: 'ring', x: u.x, y: u.y, r: st.range * 1.5, t: 0.7, c: '#9dff9d', fill: true });
+        for (const v of state.units) if (Math.hypot(v.x - u.x, v.y - u.y) <= st.range * 1.5) { if (v.down > 0) v.down = 0.01; else v.hp = stats(v).maxhp; }
+        sfx.up();
+      }
+      if (u.b >= 4 && u.abil <= 0) { // Rally
+        u.abil = 22; fx({ type: 'ring', x: u.x, y: u.y, r: st.range, t: 0.7, c: '#ffcf6a', fill: true });
+        for (const v of state.units) if (Math.hypot(v.x - u.x, v.y - u.y) <= st.range) v.rallyT = 6;
+        sfx.level();
+      }
+      continue;
+    }
+    const foes = enemiesInRange(u, st.range);
+    if (u.kind === 'shield') {
+      if (u.b >= 3 && u.abil <= 0 && foes.length) { // Ground slam, Shockwave at tier 4
+        const big = u.b >= 4 && (u.big || 0) <= 0;
+        const r = big ? 160 : 80, d = big ? 80 : 40;
+        fx({ type: 'ring', x: u.x, y: u.y, r, t: 0.45, c: big ? '#ffd27a' : '#e0c090', fill: true }); sfx.slam();
+        for (const e of state.enemies) if (e.hp > 0 && e.mode !== 'tell' && e.mode !== 'under' && Math.hypot(e.x - u.x, e.y - u.y) <= r) { hurtEnemy(e, d); if (big) e.stun = Math.max(e.stun, 1.5); }
+        u.abil = 6; if (big) u.big = 18;
+      }
+      if (u.big > 0) u.big -= dt;
+    }
+    if (!foes.length) continue;
+    u.face = foes[0].x < u.x ? -1 : 1;
+    if (u.kind === 'archer' && u.a >= 4 && u.abil <= 0) { // Arrow storm
+      u.abil = 16; u.storm = 2;
+      fx({ type: 'storm', x: u.x, y: u.y, r: st.range, t: 2 }); sfx.strike();
+    }
+    if (u.storm > 0) {
+      u.storm -= dt;
+      for (const e of foes) hurtEnemy(e, 22 * dt);
+    }
+    if (u.kind === 'archer' && u.b >= 4 && u.abil <= 0) { // Sniper shot
+      const far = enemiesInRange(u, st.range * 1.6).sort((p, q) => q.hp - p.hp)[0];
+      if (far) { u.abil = 5; shoot(u, far, 'snipe', 160); sfx.shot(); }
+    }
+    if (u.cd > 0) continue;
+    u.cd = 1 / rate;
+    foes.sort((p, q) => progress(q) - progress(p));
+    if (u.kind === 'mc') { shoot(u, foes[0], 'bolt', st.dmg); sfx.shot(); }
+    else if (u.kind === 'archer') {
+      for (let i = 0; i < Math.min(st.shots, foes.length); i++) {
+        const crit = st.crit && rng() < 0.25;
+        shoot(u, foes[i], 'arrow', st.dmg * (crit ? 2.5 : 1), { pierce: st.pierce, crit });
+      }
+      sfx.shot();
+    } else if (u.kind === 'shield') {
+      const e = foes[0]; hurtEnemy(e, st.dmg); sfx.hit();
+      fx({ type: 'swing', x: u.x, y: u.y, face: u.face, t: 0.2 });
+      if (st.stun && rng() < 0.25) e.stun = Math.max(e.stun, 0.6);
+      if (st.knock && e.mode === 'walk' && e.kind !== 'alpha') { e.d = Math.max(0, e.d - 25); if (e.blockedBy === u) e.blockedBy = null; }
+    }
+  }
+}
+
+function simEnemies(dt) {
+  for (const s of state.units) s.engaged = 0;
+  for (const e of state.enemies) if (e.blockedBy && e.hp > 0) {
+    if (e.blockedBy.down > 0 || !state.units.includes(e.blockedBy)) e.blockedBy = null;
+    else e.blockedBy.engaged += e.kind === 'alpha' ? 99 : 1;
+  }
+  for (const e of state.enemies) {
+    if (e.hp <= 0) continue;
+    e.anim += dt; e.flash = Math.max(0, e.flash - dt);
+    if (e.stun > 0) { e.stun -= dt; continue; }
+    if (e.mode === 'gather') { // the swarm's tell: a visible group milling at the entry
+      e.t -= dt; e.x += Math.sin(e.anim * 9) * 20 * dt; e.y += Math.cos(e.anim * 7) * 20 * dt;
+      if (e.t <= 0) { e.mode = 'walk'; e.d = 0; }
+      continue;
+    }
+    if (e.mode === 'tell') { // the burrower's tell: the ground rumbles and cracks
+      e.t -= dt; state.shake = Math.max(state.shake, 0.05);
+      if (e.t <= 0) { e.mode = 'attack'; e.t = tune.burrower_attack_time; sfx.slam(); fx({ type: 'puff', x: e.x, y: e.y, t: 0.5, r: 30 }); }
+      continue;
+    }
+    if (e.mode === 'attack') { // burrower: hits the back line, then makes for the gate
+      e.t -= dt;
+      const tgt = e.target && e.target.down <= 0 && state.units.includes(e.target) ? e.target : null;
+      if (tgt) {
+        const dd = Math.hypot(tgt.x - e.x, tgt.y - e.y);
+        if (dd > 26) { e.x += (tgt.x - e.x) / dd * tune.burrower_speed * dt; e.y += (tgt.y - e.y) / dd * tune.burrower_speed * dt; e.face = tgt.x < e.x ? -1 : 1; }
+        else hurtUnit(tgt, tune.burrower_dps * dt);
+      }
+      if (e.t <= 0 || !tgt) {
+        const n = nearestOn(road, e.x, e.y); e.d = n.d; e.mode = 'join';
+      }
+      continue;
+    }
+    if (e.mode === 'join') { // walk back onto the road
+      const p = posAt(road, e.d), dd = Math.hypot(p.x - e.x, p.y + e.off - e.y);
+      if (dd < 4) e.mode = 'walk';
+      else { e.x += (p.x - e.x) / dd * tune.burrower_speed * dt; e.y += (p.y + e.off - e.y) / dd * tune.burrower_speed * dt; }
+      continue;
+    }
+    // walking the road
+    if (!e.blockedBy && e.kind !== 'swarm') {
+      for (const s of state.units) {
+        if (s.kind !== 'shield' || s.down > 0) continue;
+        const st = stats(s), cap = st.block;
+        if (Math.hypot(s.x - e.x, s.y - e.y) < 46 && s.engaged + (e.kind === 'alpha' ? cap : 1) <= cap) {
+          e.blockedBy = s; s.engaged += e.kind === 'alpha' ? 99 : 1; break;
+        }
+      }
+    }
+    if (!e.blockedBy && e.kind === 'swarm') { // only a taunting shield stops the swarm
+      for (const s of state.units) {
+        if (s.kind !== 'shield' || s.down > 0 || !stats(s).taunt) continue;
+        if (Math.hypot(s.x - e.x, s.y - e.y) < 54 && s.engaged < stats(s).block + 2) { e.blockedBy = s; s.engaged++; break; }
+      }
+    }
+    if (e.kind === 'alpha') {
+      e.slamCd -= dt;
+      if (e.windup > 0) {
+        e.windup -= dt;
+        if (e.windup <= 0) {
+          sfx.slam(); state.shake = 0.4;
+          fx({ type: 'ring', x: e.sx, y: e.sy, r: tune.alpha_slam_radius, t: 0.5, c: '#ff6a4a', fill: true });
+          for (const u of state.units) if (Math.hypot(u.x - e.sx, u.y - e.sy) <= tune.alpha_slam_radius) hurtUnit(u, tune.alpha_slam_damage);
+          e.slamCd = tune.alpha_slam_every;
+        }
+        continue;
+      }
+      if (e.slamCd <= 0) { // aim at the biggest clump within reach
+        let best = null, bestN = 0;
+        for (const u of state.units) {
+          if (u.down > 0 || Math.hypot(u.x - e.x, u.y - e.y) > 170) continue;
+          const n = state.units.filter(v => v.down <= 0 && Math.hypot(v.x - u.x, v.y - u.y) <= tune.alpha_slam_radius).length;
+          if (n > bestN) { bestN = n; best = u; }
+        }
+        if (best) { e.windup = tune.alpha_slam_windup; e.wmax = e.windup; e.sx = best.x; e.sy = best.y; sfx.windup(); continue; }
+      }
+    }
+    if (e.blockedBy) {
+      const b = e.blockedBy;
+      e.face = b.x < e.x ? -1 : 1;
+      const dps = e.kind === 'swarm' ? 3 : e.kind === 'burrower' ? tune.burrower_dps : e.kind === 'alpha' ? 25 : tune.walker_dps;
+      hurtUnit(b, dps * dt);
+      continue;
+    }
+    let sp = tune[e.kind + '_speed'];
+    const p0 = posAt(road, e.d);
+    if (inMud(p0.x, p0.y)) sp *= 1 - tune.mud_slow;
+    e.d += sp * dt;
+    const p = posAt(road, e.d); e.x = p.x; e.y = p.y + e.off; e.face = p.dx < 0 ? -1 : 1;
+    if (e.d >= road.total) {
+      e.hp = 0; const g = tune['gate_dmg_' + e.kind];
+      state.gate -= g; state.shake = 0.2; sfx.gate();
+      fx({ type: 'text', x: GATE.x - 20, y: GATE.y - 60, s: '-' + g, c: '#ff6a5a', t: 1 });
+      events.push({ type: 'gate', dmg: g });
+    }
+  }
+  // villagers: killed by any enemy that touches them
+  for (const v of state.villagers) {
+    if (v.done) continue;
+    v.d += tune.villager_speed * dt; v.anim += dt;
+    const p = posAt(vpath, v.d); v.x = p.x; v.y = p.y; v.face = p.dx < 0 ? -1 : 1;
+    for (const e of state.enemies) if (e.hp > 0 && (e.mode === 'walk' || e.mode === 'attack') && Math.hypot(e.x - v.x, e.y - v.y) < ENEMY[e.kind].r + 8) {
+      v.done = 'lost'; state.lost++; fx({ type: 'text', x: v.x, y: v.y - 30, s: 'villager lost', c: '#ff8a7a', t: 1.2 }); sfx.down(); break;
+    }
+    if (!v.done && v.d >= vpath.total) {
+      v.done = 'saved'; state.saved++; state.gold += tune.villager_gold; sfx.gold();
+      fx({ type: 'text', x: v.x, y: v.y - 30, s: 'saved +' + tune.villager_gold, c: '#ffd75a', t: 1.2 });
+    }
+  }
+  state.villagers = state.villagers.filter(v => !v.done);
+  state.enemies = state.enemies.filter(e => e.hp > 0);
+}
+
+function simShots(dt) {
+  for (const s of state.shots) {
+    const e = s.e, tx = e.x, ty = e.y - 10, dd = Math.hypot(tx - s.x, ty - s.y), mv = s.speed * dt;
+    if (e.hp <= 0) { s.done = true; continue; }
+    if (dd <= mv) {
+      s.done = true; hurtEnemy(e, s.dmg, s.crit); sfx.hit();
+      if (s.pierce) {
+        const next = state.enemies.find(o => o !== e && o.hp > 0 && o.mode === 'walk' && Math.hypot(o.x - e.x, o.y - e.y) < 45);
+        if (next) hurtEnemy(next, s.dmg * 0.6);
+      }
+    } else { s.x += (tx - s.x) / dd * mv; s.y += (ty - s.y) / dd * mv; s.ang = Math.atan2(ty - s.y, tx - s.x); }
+  }
+  state.shots = state.shots.filter(s => !s.done);
+}
+
+function simWave(dt) {
+  state.waveT += dt;
+  while (state.queue.length && state.queue[0].t <= state.waveT) {
+    const q = state.queue.shift();
+    if (q.kind === 'swarm') spawnSwarm(q.n);
+    else if (q.kind === 'villager') state.villagers.push({ d: 0, x: VILLAGER_PATH[0][0], y: VILLAGER_PATH[0][1], anim: rng() * 6, face: 1 });
+    else spawn(q.kind);
+  }
+  if (!state.queue.length && !state.enemies.length && !state.villagers.length) endWave();
+}
+
+function simStep(dt) {
+  state.t += dt;
+  state.strikeCd = Math.max(0, state.strikeCd - dt);
+  state.msgT = Math.max(0, state.msgT - dt);
+  state.shake = Math.max(0, state.shake - dt);
+  if (state.phase === 'wave') simWave(dt);
+  simUnits(dt); simEnemies(dt); simShots(dt);
+  for (const f of state.fx) f.t -= dt;
+  state.fx = state.fx.filter(f => f.t > 0);
+  if (state.gate <= 0) {
+    state.gate = 0; state.gained = 'The gate has fallen'; scene = 'over'; sfx.lose(); events.push({ type: 'lose' });
+  }
+}
+
+// ---- Bottom panel -----------------------------------------------------------------------
+const SHOP = [['mc', 'Digit1'], ['archer', 'Digit2'], ['shield', 'Digit3'], ['support', 'Digit4']];
+function shopRect(i) { return { x: 12 + i * 148, y: BOTTOM + 10, w: 140, h: 74 }; }
+const UP_RECT = [{ x: 830, y: BOTTOM + 10, w: 176, h: 74 }, { x: 1012, y: BOTTOM + 10, w: 176, h: 74 }];
+const SELL_RECT = { x: 1194, y: BOTTOM + 10, w: 76, h: 74 };
+const STRIKE_RECT = { x: 610, y: BOTTOM + 10, w: 98, h: 74 };
+const inR = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+function panelClick(x, y) {
+  SHOP.forEach(([k], i) => { if (inR(shopRect(i), x, y)) choose(k); });
+  if (inR(STRIKE_RECT, x, y)) heroStrike();
+  if (state.selected && state.selected.kind !== 'mc') {
+    if (inR(UP_RECT[0], x, y)) upgrade(0);
+    if (inR(UP_RECT[1], x, y)) upgrade(1);
+    if (inR(SELL_RECT, x, y)) sell();
+  }
+}
+
+// ---- Drawing: ground --------------------------------------------------------------------
+let groundCache = null;
+function drawGround() {
+  if (!groundCache) {
+    groundCache = document.createElement('canvas'); groundCache.width = W * 2; groundCache.height = H * 2;
+    const g = groundCache.getContext('2d'); g.scale(2, 2);
+    paintGround(g);
+  }
+  ctx.drawImage(groundCache, 0, 0, W, H);
+}
+function paintGround(g) {
+  const grd = g.createLinearGradient(0, TOP, 0, BOTTOM); // farther is cooler and lighter: the 2.5D haze
+  grd.addColorStop(0, '#8fb06a'); grd.addColorStop(1, '#5f8a3f');
+  g.fillStyle = grd; g.fillRect(0, TOP, W, BOTTOM - TOP);
+  let s = 7; const r = () => (s = (s * 16807) % 2147483647) / 2147483647; // fixed pattern, not gameplay
+  for (let i = 0; i < 520; i++) { // grass tufts
+    const x = r() * W, y = TOP + r() * (BOTTOM - TOP);
+    g.strokeStyle = `rgba(40,70,25,${0.25 + r() * 0.3})`; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x - 2, y - 4 - r() * 3); g.moveTo(x, y); g.lineTo(x + 2, y - 4 - r() * 3); g.stroke();
+  }
+  // hills: raised mounds with a lit top and a shaded front face
+  for (const h of HILLS) {
+    g.fillStyle = 'rgba(30,50,20,0.35)'; g.beginPath(); g.ellipse(h.x + 6, h.y + 12, h.rx, h.ry, 0, 0, 7); g.fill();
+    g.fillStyle = '#4f7434'; g.beginPath(); g.ellipse(h.x, h.y + 8, h.rx, h.ry, 0, 0, 7); g.fill();
+    const hg = g.createRadialGradient(h.x - h.rx * 0.3, h.y - h.ry * 0.5, 4, h.x, h.y, h.rx);
+    hg.addColorStop(0, '#b9d48a'); hg.addColorStop(1, '#79a052');
+    g.fillStyle = hg; g.beginPath(); g.ellipse(h.x, h.y, h.rx, h.ry, 0, 0, 7); g.fill();
+  }
+  // cliffs: stacked rock faces
+  g.fillStyle = '#5c5850'; g.beginPath(); CLIFF.forEach(([x, y], i) => i ? g.lineTo(x, y + 18) : g.moveTo(x, y + 18)); g.closePath(); g.fill();
+  g.fillStyle = '#8d877a'; g.beginPath(); CLIFF.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill();
+  g.strokeStyle = '#4a463f'; g.lineWidth = 2;
+  for (let i = 0; i < 14; i++) { const x = 300 + r() * 170, y = TOP + 10 + r() * 110; if (inPoly(CLIFF, x, y)) { g.beginPath(); g.moveTo(x, y); g.lineTo(x + 10 + r() * 14, y + 4 + r() * 6); g.stroke(); } }
+  // river with banks
+  const strokeLine = (pts, w, c) => { g.strokeStyle = c; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.stroke(); };
+  strokeLine(RIVER, RIVER_W + 12, '#6e6a45'); strokeLine(RIVER, RIVER_W, '#3d78a0'); strokeLine(RIVER, RIVER_W * 0.45, '#5596bd');
+  // villagers' path
+  strokeLine(VILLAGER_PATH, 12, '#a9956a'); g.setLineDash([2, 10]); strokeLine(VILLAGER_PATH, 3, '#c7b48a'); g.setLineDash([]);
+  // the road: an edge then the dirt, so it reads as sunk into the ground
+  strokeLine(ROAD, 50, '#6b5636'); strokeLine(ROAD, 42, '#b59a68'); strokeLine(ROAD, 14, 'rgba(210,190,140,0.5)');
+  // mud
+  g.fillStyle = 'rgba(80,55,30,0.85)'; g.beginPath(); g.ellipse(MUD.x, MUD.y, MUD.rx, MUD.ry, 0, 0, 7); g.fill();
+  g.fillStyle = 'rgba(120,90,55,0.7)'; for (let i = 0; i < 9; i++) { g.beginPath(); g.ellipse(MUD.x - 30 + r() * 60, MUD.y - 50 + r() * 100, 6, 3, 0, 0, 7); g.fill(); }
+  // bridges over the river: planks with rails
+  const bridge = (bx, by, len, w) => {
+    g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(bx - len / 2 + 4, by - w / 2 + 6, len, w);
+    g.fillStyle = '#8a6238'; g.fillRect(bx - len / 2, by - w / 2, len, w);
+    g.strokeStyle = '#5e4024'; g.lineWidth = 1.5;
+    for (let x = bx - len / 2; x < bx + len / 2; x += 6) { g.beginPath(); g.moveTo(x, by - w / 2); g.lineTo(x, by + w / 2); g.stroke(); }
+    g.fillStyle = '#5e4024'; g.fillRect(bx - len / 2, by - w / 2 - 4, len, 4); g.fillRect(bx - len / 2, by + w / 2, len, 4);
+  };
+  bridge(516, 532, 74, 40); bridge(505, 549, 64, 12);
+  // fields near the village
+  g.fillStyle = '#c4b062'; g.fillRect(1160, 360, 100, 70);
+  g.strokeStyle = '#9c8a45'; for (let y = 364; y < 430; y += 7) { g.beginPath(); g.moveTo(1162, y); g.lineTo(1258, y); g.stroke(); }
+  // the entry: a dark forest edge
+  for (let i = 0; i < 9; i++) { g.fillStyle = '#2f4a25'; g.beginPath(); g.ellipse(10, 150 + i * 22, 22, 16, 0, 0, 7); g.fill(); }
+  for (let i = 0; i < 9; i++) { g.fillStyle = '#2f4a25'; g.beginPath(); g.ellipse(10, 300 + i * 22, 22, 16, 0, 0, 7); g.fill(); }
+}
+
+// Trees and rocks drawn with the figures, so they sort by depth
+const PROPS = [];
+(function makeProps() {
+  let s = 3; const r = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const ok = (x, y) => nearestOn(road, x, y).dist > 40 && nearestOn(river, x, y).dist > 40 && !inPoly(CLIFF, x, y)
+    && nearestOn(vpath, x, y).dist > 20 && !HILLS.some(h => inEll(h, x, y, 1.15)) && !inEll(MUD, x, y, 1.2)
+    && x < 1110 && !BUILDINGS.some(b => Math.abs(x - b.x) < b.w && Math.abs(y - b.y) < 60);
+  for (let i = 0; i < 160 && PROPS.length < 26; i++) {
+    const x = 40 + r() * 1060, y = TOP + 30 + r() * (BOTTOM - TOP - 40);
+    if (ok(x, y) && PROPS.every(p => Math.hypot(p.x - x, p.y - y) > 70)) PROPS.push({ x, y, kind: r() < 0.75 ? 'tree' : 'rock', s: 0.8 + r() * 0.5 });
+  }
+})();
+function propBlocked(x, y) { return PROPS.some(p => Math.hypot(p.x - x, p.y - y) < 20); }
+
+// ---- Drawing: figures (each stands up off the ground, with its own outline) ---------------
+function shadow(x, y, rx, ry = rx * 0.38) { ctx.fillStyle = 'rgba(20,30,10,0.35)'; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill(); }
+function poly(pts, fill, stroke = '#1f1a14', lw = 1.6) {
+  ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
+}
+function circ(x, y, r, fill, stroke = '#1f1a14', lw = 1.6) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); } }
+function ell(x, y, rx, ry, fill, stroke = '#1f1a14', lw = 1.6) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fillStyle = fill; ctx.fill(); if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); } }
+function line(x1, y1, x2, y2, c, w) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+
+function drawPerson(kind, x, y, face, anim, opts = {}) {
+  ctx.save(); ctx.translate(x, y);
+  if (opts.down) { ctx.rotate(face * 1.35); ctx.globalAlpha = 0.75; }
+  ctx.scale(face, 1);
+  const bob = Math.sin(anim * 3) * 1.2;
+  const tint = opts.flash ? '#ffffff' : null;
+  if (kind === 'mc') { // caped hero with a raised crossbow and a crest
+    shadow(0, 0, 18);
+    line(-5, -2, -6, -16, '#3a3040', 5); line(5, -2, 6, -16, '#3a3040', 5);
+    poly([[-14, -18 + bob], [-20, -6], [-4, -12 + bob]], tint || '#b02a2a');
+    poly([[-11, -16], [11, -16], [9, -38 + bob], [-9, -38 + bob]], tint || '#2f5d9a');
+    poly([[-9, -30 + bob], [9, -30 + bob], [7, -24], [-7, -24]], '#d9b54a', null);
+    circ(0, -46 + bob, 8, tint || '#e9c39c');
+    poly([[-9, -48 + bob], [9, -48 + bob], [7, -56 + bob], [-7, -56 + bob]], '#c9cfd8');
+    poly([[-2, -56 + bob], [2, -56 + bob], [0, -66 + bob]], '#d9b54a');
+    line(6, -30 + bob, 20, -34 + bob, '#5a3a20', 4); line(16, -40 + bob, 22, -28 + bob, '#3a2614', 3);
+  } else if (kind === 'archer') { // hooded, long bow
+    shadow(0, 0, 13);
+    line(-4, -2, -4, -14, '#3c3020', 4); line(4, -2, 4, -14, '#3c3020', 4);
+    poly([[-9, -14], [9, -14], [6, -36 + bob], [-6, -36 + bob]], tint || '#3f7a3a');
+    poly([[-8, -36 + bob], [8, -36 + bob], [0, -54 + bob]], tint || '#2c5a2a');
+    circ(1, -40 + bob, 4.5, '#e6bf98', null);
+    ctx.strokeStyle = '#6b4320'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(8, -30 + bob, 16, -1.3, 1.3); ctx.stroke();
+    line(8 + 16 * Math.cos(-1.3), -30 + bob + 16 * Math.sin(-1.3), 8 + 16 * Math.cos(1.3), -30 + bob + 16 * Math.sin(1.3), '#e8e0c8', 1);
+    line(-6, -34 + bob, -10, -46 + bob, '#7a5a30', 3);
+  } else if (kind === 'shield') { // broad, helmeted, a tall kite shield in front
+    shadow(0, 0, 18);
+    line(-6, -2, -7, -14, '#3a3a3a', 6); line(6, -2, 7, -14, '#3a3a3a', 6);
+    poly([[-13, -14], [13, -14], [12, -36 + bob], [-12, -36 + bob]], tint || '#8a8f99');
+    circ(0, -43 + bob, 8, tint || '#e2b48e');
+    poly([[-9, -44 + bob], [9, -44 + bob], [9, -50 + bob], [0, -55 + bob], [-9, -50 + bob]], '#6f7680');
+    poly([[6, -40 + bob], [20, -38 + bob], [20, -18], [13, -6], [6, -18]], tint || '#7a4a26');
+    line(13, -38 + bob, 13, -8, '#d9b54a', 2); line(7, -26, 19, -26, '#d9b54a', 2);
+  } else if (kind === 'support') { // long robe, staff with a glowing orb
+    shadow(0, 0, 13);
+    poly([[-11, -1], [11, -1], [6, -36 + bob], [-6, -36 + bob]], tint || '#6a4a9a');
+    poly([[-5, -24 + bob], [5, -24 + bob], [3, -1], [-3, -1]], '#8c6cc0', null);
+    circ(0, -42 + bob, 7, tint || '#ecc7a1');
+    poly([[-8, -44 + bob], [8, -44 + bob], [0, -52 + bob]], '#4a3270');
+    line(12, 0, 14, -52 + bob, '#7a5a30', 3);
+    ctx.fillStyle = 'rgba(160,255,170,0.35)'; ctx.beginPath(); ctx.arc(14, -56 + bob, 9 + Math.sin(anim * 4), 0, 7); ctx.fill();
+    circ(14, -56 + bob, 4.5, '#b8ffb8', '#2e6a3a', 1.2);
+  } else if (kind === 'villager') { // small, a bundle on the back
+    shadow(0, 0, 9);
+    const st = Math.sin(anim * 10) * 3;
+    line(-3, -1, -3 - st, -10, '#4a3a2a', 3); line(3, -1, 3 + st, -10, '#4a3a2a', 3);
+    poly([[-6, -10], [6, -10], [5, -24], [-5, -24]], '#b07a4a');
+    circ(-7, -22, 6, '#d8c49a');
+    circ(1, -29, 5, '#e6c09c');
+  }
+  ctx.restore();
+}
+
+function drawEnemy(kind, x, y, face, anim, opts = {}) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(face, 1);
+  const f = opts.flash ? '#ffffff' : null;
+  if (kind === 'walker') { // a boar-like beast: four legs, tusks, a bristled back
+    shadow(0, 0, 18);
+    const st = Math.sin(anim * 6) * 3;
+    line(-9, -6, -9 + st, 0, '#3a2a1a', 4); line(-3, -6, -3 - st, 0, '#3a2a1a', 4);
+    line(6, -6, 6 + st, 0, '#3a2a1a', 4); line(11, -6, 11 - st, 0, '#3a2a1a', 4);
+    ell(0, -14, 17, 10, f || '#6b4a3a');
+    poly([[-12, -22], [-6, -28], [-2, -23], [3, -29], [7, -23], [11, -27], [13, -20]], '#3f2a20', null);
+    ell(17, -12, 8, 7, f || '#7d5a46');
+    poly([[22, -10], [29, -15], [23, -6]], '#efe8d2', '#1f1a14', 1);
+    circ(19, -15, 1.8, '#ffdd55', null);
+  } else if (kind === 'swarm') { // a winged skitterer: six legs, antennae
+    shadow(0, 0, 8);
+    const st = Math.sin(anim * 18) * 2;
+    for (const lx of [-4, 0, 4]) { line(lx, -6, lx - 3, -1 + st, '#1a1a12', 1.5); line(lx, -6, lx + 3, -1 - st, '#1a1a12', 1.5); }
+    ell(0, -7, 8, 4.5, f || '#5d8a2e');
+    ctx.fillStyle = `rgba(220,240,255,${0.45 + 0.3 * Math.sin(anim * 30)})`;
+    ctx.beginPath(); ctx.ellipse(-2, -12, 6, 3, -0.5, 0, 7); ctx.fill(); ctx.beginPath(); ctx.ellipse(2, -12, 6, 3, 0.5, 0, 7); ctx.fill();
+    line(7, -8, 12, -14, '#1a1a12', 1); line(7, -8, 13, -10, '#1a1a12', 1);
+    circ(7, -8, 2.5, '#c9ff6a', null);
+  } else if (kind === 'burrower') { // a hump-backed digger: snout and big front claws, ringed body
+    shadow(0, 0, 18);
+    ell(-2, -10, 16, 11, f || '#8a6a5a');
+    for (const rx of [-10, -4, 2]) line(rx, -20, rx + 2, -1, 'rgba(60,40,30,0.6)', 1.5);
+    ell(13, -8, 7, 6, f || '#b08a78');
+    poly([[19, -9], [26, -7], [19, -5]], '#e9a0a0');
+    for (const c of [0, 4, 8]) line(10 + c * 0.5, -2, 16 + c, 2, '#efe6d0', 2);
+    circ(14, -12, 1.5, '#111', null);
+  } else if (kind === 'alpha') { // the boss: upright, spiked back, curved horns, long arms
+    shadow(0, 0, 40);
+    line(-12, -4, -14, -34, '#2a1a14', 12); line(12, -4, 14, -34, '#2a1a14', 12);
+    poly([[-28, -34], [26, -34], [32, -80], [-22, -92]], f || '#4a2f3a');
+    for (let i = 0; i < 5; i++) poly([[-24 + i * 9, -88 + i * 2], [-18 + i * 9, -104 + i * 3], [-14 + i * 9, -86 + i * 2]], '#d8cbb0', '#1f1a14', 1);
+    line(24, -70, 40, -30, '#3a242e', 9); line(-20, -70, -30, -32, '#3a242e', 9);
+    ell(28, -84, 15, 13, f || '#5a3a46');
+    ctx.strokeStyle = '#e8dcc0'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(22, -100, 12, 0.6, 2.6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(38, -98, 10, 0.6, 2.4); ctx.stroke();
+    circ(36, -86, 3, '#ff4a2a', null);
+  }
+  ctx.restore();
+}
+
+function drawProp(p) {
+  const { x, y, s } = p;
+  if (p.kind === 'tree') {
+    shadow(x + 6, y, 18 * s, 7 * s);
+    line(x, y, x, y - 18 * s, '#5a3a20', 5 * s);
+    ell(x, y - 30 * s, 17 * s, 15 * s, '#3c6a2c'); ell(x - 5 * s, y - 36 * s, 11 * s, 10 * s, '#4f8a3a', null); ell(x + 4 * s, y - 41 * s, 8 * s, 7 * s, '#6aa84a', null);
+  } else {
+    shadow(x + 3, y, 14 * s, 5 * s);
+    poly([[x - 13 * s, y], [x - 10 * s, y - 12 * s], [x + 2 * s, y - 17 * s], [x + 13 * s, y - 8 * s], [x + 12 * s, y]], '#8a8478');
+    poly([[x - 10 * s, y - 12 * s], [x + 2 * s, y - 17 * s], [x + 3 * s, y - 9 * s]], '#a9a396', null);
+  }
+}
+function drawBuilding(b) { // a box with a front face, a side and a pitched roof
+  const { x, y, w, d, h } = b, l = x - w / 2, rr = x + w / 2;
+  shadow(x + 10, y - 4, w * 0.7, d * 0.5);
+  poly([[l, y], [rr, y], [rr, y - h], [l, y - h]], '#d8c8a2');
+  poly([[rr, y], [rr + 12, y - d * 0.5], [rr + 12, y - h - d * 0.5], [rr, y - h]], '#b5a37e');
+  poly([[l - 6, y - h], [rr + 6, y - h], [rr + 18, y - h - d * 0.5], [x + 6, y - h - 30 - d * 0.3], [x - 2, y - h - 28]], b.roof);
+  poly([[x - 6, y], [x + 6, y], [x + 6, y - 18], [x - 6, y - 18]], '#5a3a20');
+  poly([[l + 6, y - h + 12], [l + 16, y - h + 12], [l + 16, y - h + 22], [l + 6, y - h + 22]], '#ffe7a0');
+}
+function drawWall() { // the palisade and the gate, the thing the battle protects
+  for (let y = TOP + 6; y < BOTTOM; y += 11) {
+    if (Math.abs(y - GATE.y) < 34) continue;
+    poly([[1136, y + 10], [1146, y + 10], [1146, y - 24], [1141, y - 30], [1136, y - 24]], '#8a6238', '#3a2614', 1);
+  }
+  const hpk = state ? state.gate / tune.gate_hp : 1;
+  poly([[1130, GATE.y + 30], [1152, GATE.y + 30], [1152, GATE.y - 44], [1130, GATE.y - 44]], hpk > 0.5 ? '#6e4a28' : hpk > 0.25 ? '#7a3a22' : '#8a2a1a');
+  line(1131, GATE.y - 20, 1151, GATE.y - 20, '#3a2614', 3); line(1131, GATE.y + 6, 1151, GATE.y + 6, '#3a2614', 3);
+  poly([[1126, GATE.y - 44], [1156, GATE.y - 44], [1150, GATE.y - 58], [1132, GATE.y - 58]], '#5a3a20');
+}
+
+function hpBar(x, y, k, w = 30, c = '#6ad04a') {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
+  ctx.fillStyle = k > 0.5 ? c : k > 0.25 ? '#e0b030' : '#e04a30'; ctx.fillRect(x - w / 2, y, w * Math.max(0, k), 4);
+}
+
+function drawWorld() {
+  ctx.save();
+  if (state.shake > 0) ctx.translate((rng.view() - 0.5) * 8 * state.shake * 4, (rng.view() - 0.5) * 8 * state.shake * 4);
+  drawGround();
+  // burrower tells: cracks spreading on the ground, under everything that stands
+  for (const e of state.enemies) if (e.mode === 'tell') {
+    const k = 1 - e.t / tune.burrower_tell;
+    ctx.strokeStyle = `rgba(50,30,15,${0.5 + 0.5 * k})`; ctx.lineWidth = 2.5;
+    for (let i = 0; i < 7; i++) {
+      const a = i * 0.9 + 0.3, len = 8 + 26 * k;
+      ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(a) * len, e.y + Math.sin(a) * len * 0.5);
+      ctx.lineTo(e.x + Math.cos(a + 0.3) * len * 1.3, e.y + Math.sin(a + 0.3) * len * 0.65); ctx.stroke();
+    }
+    ell(e.x, e.y, 10 + 18 * k, (10 + 18 * k) * 0.45, `rgba(110,80,50,${0.4 + 0.4 * k})`, null);
+    for (let i = 0; i < 4; i++) { const a = e.t * 9 + i * 1.6; circ(e.x + Math.cos(a) * 14 * k, e.y - 4 - Math.abs(Math.sin(a * 2)) * 10, 2, 'rgba(140,110,70,0.8)', null); }
+    text('!', e.x, e.y - 30 - Math.sin(state.t * 12) * 3, 26, '#ff6a3a', 'center', true);
+  }
+  // Alpha slam tell: a red ring that closes in before the hit
+  for (const e of state.enemies) if (e.windup > 0) {
+    const k = 1 - e.windup / e.wmax;
+    ctx.fillStyle = `rgba(255,60,30,${0.12 + 0.25 * k})`; ctx.beginPath(); ctx.ellipse(e.sx, e.sy, tune.alpha_slam_radius, tune.alpha_slam_radius * 0.5, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#ff4a2a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(e.sx, e.sy, tune.alpha_slam_radius * (1.4 - 0.4 * k), tune.alpha_slam_radius * 0.5 * (1.4 - 0.4 * k), 0, 0, 7); ctx.stroke();
+  }
+  // selected and placing: range circles on the ground
+  const sel = state.selected;
+  if (sel) {
+    const st = stats(sel);
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(sel.x, sel.y, st.range, st.range * 0.62, 0, 0, 7); ctx.fill(); ctx.stroke();
+  }
+  if (scene === 'play' && state.placing && mouse.y < BOTTOM) {
+    const prob = spotProblem(mouse.x, mouse.y), hg = onHill(mouse.x, mouse.y);
+    const ghost = { kind: state.placing, high: hg, a: 0, b: 0 }, st = stats(ghost);
+    ctx.strokeStyle = prob ? 'rgba(255,90,70,0.9)' : 'rgba(255,255,255,0.9)'; ctx.fillStyle = prob ? 'rgba(255,60,40,0.12)' : 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(mouse.x, mouse.y, st.range, st.range * 0.62, 0, 0, 7); ctx.fill(); ctx.stroke();
+  }
+  // everything that stands, sorted by depth
+  const items = [];
+  for (const p of PROPS) items.push({ y: p.y, draw: () => drawProp(p) });
+  for (const b of BUILDINGS) items.push({ y: b.y, draw: () => drawBuilding(b) });
+  items.push({ y: GATE.y + 30, draw: drawWall });
+  for (const u of state.units) items.push({ y: u.y, draw: () => drawUnit(u) });
+  for (const v of state.villagers) items.push({ y: v.y, draw: () => drawPerson('villager', v.x, v.y, v.face, v.anim) });
+  for (const e of state.enemies) if (e.mode !== 'tell') items.push({ y: e.y, draw: () => drawFoe(e) });
+  if (scene === 'play' && state.placing && mouse.y < BOTTOM) items.push({ y: mouse.y, draw: () => { ctx.globalAlpha = 0.65; drawPerson(state.placing, mouse.x, mouse.y, 1, state.t); ctx.globalAlpha = 1; } });
+  items.sort((a, b) => a.y - b.y).forEach(i => i.draw());
+  // shots
+  for (const s of state.shots) {
+    const a = s.ang || 0;
+    if (s.kind === 'bolt') { line(s.x - Math.cos(a) * 10, s.y - Math.sin(a) * 10, s.x, s.y, '#9ee7ff', 3); circ(s.x, s.y, 2.5, '#e8fbff', null); }
+    else if (s.kind === 'snipe') line(s.x - Math.cos(a) * 26, s.y - Math.sin(a) * 26, s.x, s.y, '#fff2a0', 3);
+    else line(s.x - Math.cos(a) * 12, s.y - Math.sin(a) * 12, s.x, s.y, s.crit ? '#ffd75a' : '#f2ead2', 2);
+  }
+  // effects
+  for (const f of state.fx) {
+    const k = f.t / f.max;
+    if (f.type === 'text') text(f.s, f.x, f.y - (1 - k) * 22, 15, f.c, 'center', true);
+    else if (f.type === 'ring') {
+      ctx.strokeStyle = f.c; ctx.globalAlpha = k; ctx.lineWidth = 3;
+      const rr = f.r * (1.1 - 0.3 * k);
+      ctx.beginPath(); ctx.ellipse(f.x, f.y, rr, rr * 0.55, 0, 0, 7); ctx.stroke();
+      if (f.fill) { ctx.fillStyle = f.c; ctx.globalAlpha = k * 0.2; ctx.fill(); }
+      ctx.globalAlpha = 1;
+    } else if (f.type === 'puff') { ctx.globalAlpha = k; ell(f.x, f.y - 6, f.r * (1.4 - k), f.r * 0.6 * (1.4 - k), '#c8b890', null); ctx.globalAlpha = 1; }
+    else if (f.type === 'heal') { ctx.globalAlpha = k; text('+', f.x, f.y - (1 - k) * 18, 20, '#7dff7d', 'center', true); ctx.globalAlpha = 1; }
+    else if (f.type === 'swing') { ctx.strokeStyle = `rgba(255,255,255,${k})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(f.x + f.face * 14, f.y - 24, 18, f.face > 0 ? -1.2 : 1.9, f.face > 0 ? 1.2 : 4.3); ctx.stroke(); }
+    else if (f.type === 'storm') {
+      for (let i = 0; i < 10; i++) {
+        const a = (i * 2.39 + f.t * 3) % 6.28, rr = f.r * ((i * 0.37 + f.t) % 1);
+        const x = f.x + Math.cos(a) * rr, y = f.y + Math.sin(a) * rr * 0.6;
+        line(x - 3, y - 24, x, y - 4, '#f2ead2', 2);
+      }
+    }
+  }
+  // placing: what the spot gives or why it is blocked
+  if (scene === 'play' && state.placing && mouse.y < BOTTOM) {
+    const prob = spotProblem(mouse.x, mouse.y);
+    const label = prob || (onHill(mouse.x, mouse.y) ? `+range: high ground (+${Math.round(tune.high_ground_range * 100)}%)` : `${KINDS[state.placing].name}: click or Enter to place`);
+    const tw = label.length * 8 + 20;
+    ctx.fillStyle = 'rgba(20,16,10,0.85)'; ctx.fillRect(mouse.x - tw / 2, mouse.y + 14, tw, 26);
+    text(label, mouse.x, mouse.y + 27, 15, prob ? '#ff9a8a' : onHill(mouse.x, mouse.y) ? '#bff0a0' : '#fff');
+  }
+  ctx.restore();
+}
+function drawUnit(u) {
+  if (u === state.selected) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y, 20, 8, 0, 0, 7); ctx.stroke(); }
+  if (u.unbreakT > 0) { ctx.fillStyle = 'rgba(255,226,138,0.35)'; ctx.beginPath(); ctx.ellipse(u.x, u.y - 24, 26, 34, 0, 0, 7); ctx.fill(); }
+  if (u.rallyT > 0) { ctx.strokeStyle = 'rgba(255,207,106,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y, 22, 9, 0, 0, 7); ctx.stroke(); }
+  drawPerson(u.kind, u.x, u.y - (u.down > 0 ? 6 : 0), u.face, u.anim, { down: u.down > 0, flash: u.flash > 0 });
+  const st = stats(u);
+  if (u.down > 0) {
+    const k = u.down / u.downMax;
+    ctx.strokeStyle = '#ff8a7a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(u.x, u.y - 40, 10, -Math.PI / 2, -Math.PI / 2 + k * 6.283); ctx.stroke();
+    text(Math.ceil(u.down) + '', u.x, u.y - 40, 13, '#fff', 'center', true);
+  } else if (u.hp < st.maxhp) hpBar(u.x, u.y - (u.kind === 'mc' ? 74 : 64), u.hp / st.maxhp, 30, '#6ad04a');
+  if (u.kind === 'mc') text('Lv ' + state.mcLevel, u.x, u.y + 14, 13, '#9ee7ff', 'center', true);
+  else if (u.a + u.b > 0) text(`${u.a}-${u.b}`, u.x, u.y + 14, 13, '#fff', 'center', true);
+}
+function drawFoe(e) {
+  if (e.mode === 'gather') { ctx.globalAlpha = 0.9; }
+  drawEnemy(e.kind, e.x, e.y, e.face, e.anim, { flash: e.flash > 0 });
+  ctx.globalAlpha = 1;
+  if (e.stun > 0) text('*', e.x, e.y - ENEMY[e.kind].r * 2 - 14, 18, '#ffe28a', 'center', true);
+  if (e.hp < e.maxhp) hpBar(e.x, e.y - (e.kind === 'alpha' ? 116 : ENEMY[e.kind].r * 2 + 8), e.hp / e.maxhp, e.kind === 'alpha' ? 70 : 26, '#e05a4a');
+}
+// a view-only random for screen shake, so drawing never moves the gameplay rng
+rng.view = (() => { let v = 99; return () => (v = (v * 16807) % 2147483647) / 2147483647; })();
+
+// ---- HUD --------------------------------------------------------------------------------
+function panelBox(r, on, hot) {
+  ctx.fillStyle = on ? (hot ? '#5a4628' : '#3e3122') : '#2a241c'; ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.strokeStyle = on ? '#c9a46a' : '#5a4a36'; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
+}
+function drawHUD() {
+  ctx.fillStyle = '#2a2118'; ctx.fillRect(0, 0, W, TOP);
+  ctx.fillStyle = '#c9a46a'; ctx.fillRect(0, TOP - 3, W, 3);
+  text(`Gold ${Math.floor(state.gold)}`, 20, 24, 22, '#ffd75a', 'left', true);
+  text(`Gate ${Math.ceil(state.gate)} / ${tune.gate_hp}`, 200, 24, 22, state.gate > tune.gate_hp * 0.3 ? '#f2ead2' : '#ff8a7a', 'left', true);
+  text(`Wave ${state.wave} / ${CONFIG.waves.length}`, 420, 24, 22, '#f2ead2', 'left', true);
+  text(`Hero Lv ${state.mcLevel}`, 590, 24, 20, '#9ee7ff', 'left', true);
+  if (state.saved + state.lost) text(`Villagers saved ${state.saved}, lost ${state.lost}`, 740, 24, 17, '#d8c49a', 'left');
+  text(state.speed > 1 ? 'Speed x2 (F)' : 'Speed x1 (F)', 1260, 24, 17, '#c9b48a', 'right');
+  // the message line
+  let m = '';
+  if (state.msgT > 0) m = state.msg;
+  else if (!state.units.some(u => u.kind === 'mc')) m = 'Place your hero: move the mouse onto open ground and click. It is free.';
+  else if (state.phase === 'build') m = `Build phase. Space: start wave ${state.wave + 1}.`;
+  if (m) {
+    ctx.font = `bold 17px ${FONT}`; const tw = ctx.measureText(m).width + 30;
+    ctx.fillStyle = 'rgba(30,22,14,0.85)'; ctx.fillRect(W / 2 - tw / 2 - 60, TOP + 8, tw, 30);
+    text(m, W / 2 - 60, TOP + 23, 17, '#fff4d8', 'center', true);
+  }
+  // bottom panel
+  ctx.fillStyle = '#2a2118'; ctx.fillRect(0, BOTTOM, W, H - BOTTOM);
+  ctx.fillStyle = '#c9a46a'; ctx.fillRect(0, BOTTOM, W, 3);
+  const hasMc = state.units.some(u => u.kind === 'mc');
+  SHOP.forEach(([k], i) => {
+    const r = shopRect(i), c = costOf(k);
+    const on = k === 'mc' ? !hasMc : hasMc && state.gold >= c;
+    panelBox(r, on, state.placing === k);
+    drawPerson(k, r.x + 26, r.y + 66, 1, state.t * 0.3);
+    text(`${i + 1}  ${k === 'shield' ? 'Shield' : KINDS[k].name}`, r.x + 50, r.y + 20, 16, on ? '#fff4d8' : '#a89880', 'left', true);
+    text(k === 'mc' ? (hasMc ? 'placed' : 'free') : `${c} gold`, r.x + 50, r.y + 42, 15, on ? '#ffd75a' : '#a89880', 'left');
+    text(KINDS[k].role, r.x + 50, r.y + 61, 13, '#c9b48a', 'left');
+  });
+  // hero strike
+  const ready = hasMc && state.strikeCd <= 0;
+  panelBox(STRIKE_RECT, ready, false);
+  text('Q  Strike', STRIKE_RECT.x + 49, STRIKE_RECT.y + 22, 16, ready ? '#9ee7ff' : '#a89880', 'center', true);
+  text(state.strikeCd > 0 ? `${Math.ceil(state.strikeCd)} s` : hasMc ? 'ready' : '-', STRIKE_RECT.x + 49, STRIKE_RECT.y + 48, 15, '#c9b48a');
+  // the selected person
+  const u = state.selected;
+  if (u) {
+    const st = stats(u);
+    text(KINDS[u.kind].name + (u.high ? '  (high ground)' : ''), 722, BOTTOM + 22, 15, '#fff4d8', 'left', true);
+    text(`HP ${Math.ceil(u.hp)} / ${Math.round(st.maxhp)}`, 722, BOTTOM + 44, 14, '#c9b48a', 'left');
+    text(u.kind === 'support' ? `heal ${st.heal}` : `dmg ${st.dmg.toFixed(1)}`, 722, BOTTOM + 64, 14, '#c9b48a', 'left');
+    if (u.kind !== 'mc') {
+      for (let p = 0; p < 2; p++) {
+        const r = UP_RECT[p], tier = p === 0 ? u.a : u.b, ok = canUp(u, p), c = tier < 4 ? upCost(tier) : 0;
+        panelBox(r, ok && state.gold >= c, false);
+        text(`${p === 0 ? 'U' : 'I'}  ${KINDS[u.kind].paths[p]}  ${'|'.repeat(tier)}${'.'.repeat(4 - tier)}`, r.x + 10, r.y + 20, 15, '#fff4d8', 'left', true);
+        if (ok) { text(KINDS[u.kind].tiers[p][tier], r.x + 10, r.y + 42, 14, '#bff0a0', 'left'); text(`${c} gold`, r.x + 10, r.y + 61, 14, state.gold >= c ? '#ffd75a' : '#a89880', 'left'); }
+        else text(capReason(u, p), r.x + 10, r.y + 48, 13, '#a89880', 'left');
+      }
+      panelBox(SELL_RECT, true, false);
+      text('X  Sell', SELL_RECT.x + 38, SELL_RECT.y + 24, 15, '#fff4d8', 'center', true);
+      text(`+${Math.floor(u.spent * tune.sell_refund)}`, SELL_RECT.x + 38, SELL_RECT.y + 50, 15, '#ffd75a');
+    } else text('Free, placed first. Levels from kills this battle.', 830, BOTTOM + 44, 14, '#c9b48a', 'left');
+  } else text('Click a person to see upgrades.', 830, BOTTOM + 44, 15, '#a89880', 'left');
+}
+
+// ---- Scenes -----------------------------------------------------------------------------
+const scenes = {
+  figures: {
+    update(dt) { state.t += dt; },
+    draw() {
+      clear('#6f9a4c'); text('Figures', W / 2, 60, 32, '#fff', 'center', true);
+      const people = ['mc', 'archer', 'shield', 'support', 'villager'], foes = ['walker', 'swarm', 'burrower', 'alpha'];
+      const names = { mc: 'Hero', archer: 'Archer', shield: 'Shield Fighter', support: 'Support', villager: 'Villager' };
+      people.forEach((k, i) => { const x = 180 + i * 230; drawPerson(k, x, 300, 1, state.t); text(names[k], x, 330, 18, '#fff', 'center', true); });
+      foes.forEach((k, i) => { const x = 220 + i * 280; drawEnemy(k, x, 560, 1, state.t); text(ENEMY[k].name, x, 590, 18, '#fff', 'center', true); });
+    },
+  },
+  title: {
+    update() { if (pressed('Enter') || pressed('Space') || clicks.length) { clicks.length = 0; reset(); scene = 'play'; } },
+    draw() {
+      drawGround(); ctx.fillStyle = 'rgba(25,18,10,0.72)'; ctx.fillRect(0, 0, W, H);
+      text(TITLE, W / 2, 150, 72, '#ffe2a0', 'center', true);
+      text('Your hero is the main tower. The people you met on the road are the rest.', W / 2, 220, 22, '#f2ead2');
+      text('Hold the village gate for 10 waves.', W / 2, 252, 22, '#f2ead2');
+      ['mc', 'archer', 'shield', 'support'].forEach((k, i) => drawPerson(k, W / 2 - 180 + i * 120, 360, 1, clock.now()));
+      CONTROLS.forEach((c, i) => text(c, W / 2, 430 + i * 36, 19, '#d8c8a8'));
+      text('Enter or click to start', W / 2, H - 70, 28, '#fff', 'center', true);
+    },
+  },
+  play: {
+    update(dt) {
+      if (pressed('KeyP') || (pressed('Escape') && !state.placing)) { scene = 'pause'; clicks.length = 0; return; }
+      if (pressed('Escape')) state.placing = null;
+      if (pressed('KeyF')) state.speed = state.speed > 1 ? 1 : 2;
+      const mv = 420 * dt;
+      if (down.has('ArrowLeft')) mouse.x -= mv; if (down.has('ArrowRight')) mouse.x += mv;
+      if (down.has('ArrowUp')) mouse.y -= mv; if (down.has('ArrowDown')) mouse.y += mv;
+      mouse.x = Math.max(0, Math.min(W, mouse.x)); mouse.y = Math.max(TOP, Math.min(H, mouse.y));
+      SHOP.forEach(([k, code]) => { if (pressed(code)) choose(k); });
+      if (pressed('Enter') && state.placing) placeAt(mouse.x, mouse.y);
+      while (clicks.length) {
+        const c = clicks.shift();
+        if (c.right) { state.placing = null; state.selected = null; } else trySelectOrPlace(c.x, c.y);
+      }
+      if (pressed('KeyU')) upgrade(0);
+      if (pressed('KeyI')) upgrade(1);
+      if (pressed('KeyX') || pressed('Delete')) sell();
+      if (pressed('KeyQ')) heroStrike();
+      if (pressed('Space')) startWave();
+      for (let i = 0; i < state.speed && scene === 'play'; i++) simStep(dt);
+    },
+    draw() { drawWorld(); drawHUD(); },
+  },
+  pause: {
+    update() { if (pressed('KeyP') || pressed('Escape')) scene = 'play'; clicks.length = 0; },
+    draw() { scenes.play.draw(); ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, W, H); text('Paused', W / 2, H / 2, 56, '#fff', 'center', true); text('P to resume', W / 2, H / 2 + 50, 22, '#ddd'); },
+  },
+  over: {
+    update() { if (pressed('KeyR') || pressed('Enter')) { reset(); scene = 'play'; } clicks.length = 0; },
+    draw() {
+      scenes.play.draw(); ctx.fillStyle = 'rgba(30,0,0,0.55)'; ctx.fillRect(0, 0, W, H);
+      text(state.gained || 'Game over', W / 2, H / 2 - 50, 54, '#ffb0a0', 'center', true);
+      text(`You held until wave ${state.wave}. Villagers saved: ${state.saved}.`, W / 2, H / 2 + 10, 24, '#f2ead2');
+      text('R to restart', W / 2, H / 2 + 60, 26, '#fff');
+    },
+  },
+  results: {
+    update() { if (pressed('Enter') || pressed('KeyR')) { reset(); scene = 'play'; } clicks.length = 0; },
+    draw() {
+      scenes.play.draw(); ctx.fillStyle = 'rgba(10,20,0,0.55)'; ctx.fillRect(0, 0, W, H);
+      text(state.gained, W / 2, H / 2 - 60, 56, '#ffe2a0', 'center', true);
+      text(`All ${CONFIG.waves.length} waves held. Gate ${Math.ceil(state.gate)} / ${tune.gate_hp}. Villagers saved: ${state.saved}. Hero level ${state.mcLevel}.`, W / 2, H / 2 + 4, 22, '#f2ead2');
+      text('Enter to play again', W / 2, H / 2 + 56, 26, '#fff');
+    },
+  },
+};
+
+// ---- Loop -------------------------------------------------------------------------------
+function step() {
+  if (pressed('KeyM')) { setMuted(!muted); hit.delete('KeyM'); }
+  scenes[scene].update(STEP); hit.clear();
+  if (scene !== 'play') clicks.length = 0;
+}
+let last, acc = 0, ALPHA = 1;
+function tick() {
+  const now = clock.now();
+  acc += Math.min(now - last, 0.25); last = now;
+  while (acc >= STEP) { step(); acc -= STEP; }
+  ALPHA = acc / STEP;
+  drawFrame();
+}
+function drawFrame() { scenes[scene].draw(); if (muted) text('muted (M)', W - 20, H - 104, 13, '#c9b48a', 'right'); }
+function frame() { tick(); requestAnimationFrame(frame); }
+function timer() { if (document.visibilityState === 'visible' && clock.now() - last > 0.1) tick(); }
+
+window.game = {
+  get scene() { return scene; },
+  get state() { return state; },
+  press(code) { hit.add(code); },
+  hold(code, on) { on ? down.add(code) : down.delete(code); },
+  get events() { return events; },
+  step(n = 1, draw = true, alpha = 1) {
+    for (let i = 0; i < n; i++) step();
+    if (draw) { ALPHA = alpha; drawFrame(); }
+  },
+};
+
+reset();
+scene = params.get('scene') || 'title';
+last = clock.now();
+if (params.get('manual') === '1') drawFrame();
+else { requestAnimationFrame(frame); setInterval(timer, 50); }
+</script>
+</body>
+</html>
